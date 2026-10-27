@@ -1,0 +1,7 @@
+{
+  "name": "SỬ HỌC SỐ – Hệ thống hỗ trợ dạy học môn Lịch sử",
+  "description": "Hệ thống hỗ trợ dạy học môn Lịch sử dành cho giáo viên Cao Thị Thu tại Trung tâm Giáo dục nghề nghiệp – Giáo dục thường xuyên thành phố Quảng Ninh, phân hiệu Tiên Yên.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
