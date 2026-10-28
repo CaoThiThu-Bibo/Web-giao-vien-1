@@ -26,6 +26,32 @@ import {
   initialMaterials,
   initialOnlineAssignments,
 } from '../data/initialData';
+import {
+  pushAllToSupabase,
+  fetchAllFromSupabase,
+  syncStudentToSupabase,
+  deleteStudentFromSupabase,
+  syncClassToSupabase,
+  deleteClassFromSupabase,
+  syncExamToSupabase,
+  deleteExamFromSupabase,
+  syncAttendanceToSupabase,
+  syncSupportItemToSupabase,
+  deleteSupportItemFromSupabase,
+  syncQuestionToSupabase,
+  deleteQuestionFromSupabase,
+  syncMaterialToSupabase,
+  deleteMaterialFromSupabase,
+} from '../lib/supabaseSync';
+import { testSupabaseConnection, isSupabaseConfigured } from '../lib/supabase';
+
+export interface SupabaseCloudStatus {
+  connected: boolean;
+  message: string;
+  tableReady: boolean;
+  isChecking: boolean;
+  lastSynced?: string;
+}
 
 interface AppContextType {
   activeTab: ActiveTab;
@@ -98,9 +124,17 @@ interface AppContextType {
   // Selected student for quick profile view
   viewingStudentId: string | null;
   setViewingStudentId: (id: string | null) => void;
+
+  // Supabase Cloud Sync
+  supabaseStatus: SupabaseCloudStatus;
+  checkSupabaseStatus: () => Promise<void>;
+  syncAllToSupabase: () => Promise<{ success: boolean; message: string }>;
+  fetchFromSupabaseCloud: () => Promise<{ success: boolean; message: string }>;
+  isSyncingSupabase: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
+
 
 const STORAGE_KEY = 'suhocso_app_data_v1';
 
@@ -199,6 +233,121 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [viewingStudentId, setViewingStudentId] = useState<string | null>(null);
 
+  // Supabase Cloud State
+  const [supabaseStatus, setSupabaseStatus] = useState<SupabaseCloudStatus>({
+    connected: false,
+    message: isSupabaseConfigured ? 'Đang kiểm tra kết nối Supabase...' : 'Chưa cấu hình Supabase.',
+    tableReady: false,
+    isChecking: true,
+  });
+  const [isSyncingSupabase, setIsSyncingSupabase] = useState(false);
+
+  const checkSupabaseStatus = async () => {
+    setSupabaseStatus((prev) => ({ ...prev, isChecking: true }));
+    try {
+      const res = await fetch('/api/supabase/status');
+      if (res.ok) {
+        const data = await res.json();
+        setSupabaseStatus({
+          connected: Boolean(data.connected),
+          tableReady: Boolean(data.tableReady),
+          message: data.message || 'Kết nối Supabase thành công.',
+          isChecking: false,
+        });
+        return;
+      }
+    } catch (e) {}
+
+    const direct = await testSupabaseConnection();
+    setSupabaseStatus({
+      connected: direct.connected,
+      tableReady: direct.connected && !direct.message.includes('chưa được tạo'),
+      message: direct.message,
+      isChecking: false,
+    });
+  };
+
+  // Sync all local data to Supabase
+  const syncAllToSupabase = async () => {
+    setIsSyncingSupabase(true);
+    const res = await pushAllToSupabase({
+      classes,
+      students,
+      exams,
+      attendanceRecords,
+      supportItems,
+      questions,
+      materials,
+    });
+    setIsSyncingSupabase(false);
+    if (res.success) {
+      setSupabaseStatus((prev) => ({
+        ...prev,
+        connected: true,
+        tableReady: true,
+        lastSynced: new Date().toLocaleTimeString('vi-VN'),
+        message: 'Đã đồng bộ toàn bộ dữ liệu lên Supabase thành công!',
+      }));
+    } else {
+      setSupabaseStatus((prev) => ({
+        ...prev,
+        message: res.message,
+      }));
+    }
+    return res;
+  };
+
+  // Fetch all from Supabase
+  const fetchFromSupabaseCloud = async () => {
+    setIsSyncingSupabase(true);
+    const data = await fetchAllFromSupabase();
+    setIsSyncingSupabase(false);
+
+    if (data.hasData) {
+      if (data.classes && data.classes.length > 0) setClasses(data.classes);
+      if (data.students && data.students.length > 0) setStudents(data.students);
+      if (data.exams && data.exams.length > 0) setExams(data.exams);
+      if (data.attendanceRecords && data.attendanceRecords.length > 0) setAttendanceRecords(data.attendanceRecords);
+      if (data.supportItems && data.supportItems.length > 0) setSupportItems(data.supportItems);
+      if (data.questions && data.questions.length > 0) setQuestions(data.questions);
+      if (data.materials && data.materials.length > 0) setMaterials(data.materials);
+
+      setSupabaseStatus((prev) => ({
+        ...prev,
+        connected: true,
+        tableReady: true,
+        lastSynced: new Date().toLocaleTimeString('vi-VN'),
+        message: 'Đã tải dữ liệu mới nhất từ Supabase về ứng dụng thành công!',
+      }));
+      return { success: true, message: 'Đã tải thành công dữ liệu từ đám mây Supabase!' };
+    } else {
+      return {
+        success: false,
+        message: data.error || 'Chưa tìm thấy dữ liệu trên Supabase. Bạn có thể bấm "Đồng bộ lên Supabase" để tải dữ liệu lên.',
+      };
+    }
+  };
+
+  // On mount: check status and auto-fetch if cloud has data
+  useEffect(() => {
+    checkSupabaseStatus().then(async () => {
+      try {
+        const cloud = await fetchAllFromSupabase();
+        if (cloud.hasData) {
+          if (cloud.classes && cloud.classes.length > 0) setClasses(cloud.classes);
+          if (cloud.students && cloud.students.length > 0) setStudents(cloud.students);
+          if (cloud.exams && cloud.exams.length > 0) setExams(cloud.exams);
+          if (cloud.attendanceRecords && cloud.attendanceRecords.length > 0) setAttendanceRecords(cloud.attendanceRecords);
+          if (cloud.supportItems && cloud.supportItems.length > 0) setSupportItems(cloud.supportItems);
+          if (cloud.questions && cloud.questions.length > 0) setQuestions(cloud.questions);
+          if (cloud.materials && cloud.materials.length > 0) setMaterials(cloud.materials);
+        }
+      } catch (e) {
+        console.warn('Initial Supabase fetch attempt:', e);
+      }
+    });
+  }, []);
+
   // Sync to local storage on change
   useEffect(() => {
     localStorage.setItem(`${STORAGE_KEY}_config`, JSON.stringify(systemConfig));
@@ -266,9 +415,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: newId,
     };
     setStudents((prev) => [newStudent, ...prev]);
+    syncStudentToSupabase(newStudent);
   };
 
+
   const updateStudent = (id: string, updated: Partial<Student>) => {
+    let targetUpdated: Student | null = null;
     setStudents((prev) =>
       prev.map((s) => {
         if (s.id !== id) return s;
@@ -283,19 +435,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           else if (avg >= 5.0) merged.rank = 'Trung bình';
           else merged.rank = 'Yếu';
         }
+        targetUpdated = merged;
         return merged;
       })
     );
+    if (targetUpdated) {
+      syncStudentToSupabase(targetUpdated);
+    }
   };
 
   const deleteStudent = (id: string) => {
     setStudents((prev) => prev.filter((s) => s.id !== id));
+    deleteStudentFromSupabase(id);
   };
 
   const importStudents = (imported: Partial<Student>[]) => {
     const errors: string[] = [];
     let successCount = 0;
     const newArr = [...students];
+    const newlyAdded: Student[] = [];
 
     imported.forEach((row, idx) => {
       if (!row.fullName || !row.fullName.trim()) {
@@ -328,10 +486,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
 
       newArr.push(newStudent);
+      newlyAdded.push(newStudent);
       successCount++;
     });
 
     setStudents(newArr);
+    newlyAdded.forEach(syncStudentToSupabase);
     return { successCount, errors };
   };
 
@@ -343,14 +503,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       studentCount: 0,
     };
     setClasses((prev) => [...prev, newClass]);
+    syncClassToSupabase(newClass);
   };
 
   const updateClass = (id: string, updated: Partial<ClassRoom>) => {
-    setClasses((prev) => prev.map((c) => (c.id === id ? { ...c, ...updated } : c)));
+    let targetUpdated: ClassRoom | null = null;
+    setClasses((prev) =>
+      prev.map((c) => {
+        if (c.id === id) {
+          const merged = { ...c, ...updated };
+          targetUpdated = merged;
+          return merged;
+        }
+        return c;
+      })
+    );
+    if (targetUpdated) {
+      syncClassToSupabase(targetUpdated);
+    }
   };
 
   const deleteClass = (id: string) => {
     setClasses((prev) => prev.filter((c) => c.id !== id));
+    deleteClassFromSupabase(id);
   };
 
   // Exam operations
@@ -360,20 +535,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `ex_${Date.now()}`,
     };
     setExams((prev) => [newExam, ...prev]);
+    syncExamToSupabase(newExam);
   };
 
   const updateExam = (id: string, updated: Partial<Exam>) => {
-    setExams((prev) => prev.map((e) => (e.id === id ? { ...e, ...updated } : e)));
+    let targetUpdated: Exam | null = null;
+    setExams((prev) =>
+      prev.map((e) => {
+        if (e.id === id) {
+          const merged = { ...e, ...updated };
+          targetUpdated = merged;
+          return merged;
+        }
+        return e;
+      })
+    );
+    if (targetUpdated) {
+      syncExamToSupabase(targetUpdated);
+    }
   };
 
   const deleteExam = (id: string) => {
     setExams((prev) => prev.filter((e) => e.id !== id));
+    deleteExamFromSupabase(id);
     // Clean scores from students
     setStudents((prev) =>
       prev.map((s) => {
         const scores = { ...s.scores };
         delete scores[id];
-        return { ...s, scores };
+        const updated = { ...s, scores };
+        syncStudentToSupabase(updated);
+        return updated;
       })
     );
   };
@@ -391,12 +583,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         else if (avg >= 5.0) rank = 'Trung bình';
         else rank = 'Yếu';
 
-        return {
+        const updatedStudent: Student = {
           ...s,
           scores,
           averageScore: avg,
           rank,
         };
+        syncStudentToSupabase(updatedStudent);
+        return updatedStudent;
       })
     );
   };
@@ -415,12 +609,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         else if (avg >= 5.0) rank = 'Trung bình';
         else rank = 'Yếu';
 
-        return {
+        const updatedStudent: Student = {
           ...s,
           scores,
           averageScore: avg,
           rank,
         };
+        syncStudentToSupabase(updatedStudent);
+        return updatedStudent;
       })
     );
   };
@@ -430,28 +626,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const existingIndex = attendanceRecords.findIndex(
       (r) => r.date === rec.date && r.studentId === rec.studentId
     );
+    let recordToSync: AttendanceRecord;
     if (existingIndex >= 0) {
+      recordToSync = { ...attendanceRecords[existingIndex], ...rec };
       setAttendanceRecords((prev) =>
-        prev.map((r, i) => (i === existingIndex ? { ...r, ...rec } : r))
+        prev.map((r, i) => (i === existingIndex ? recordToSync : r))
       );
     } else {
-      setAttendanceRecords((prev) => [...prev, { ...rec, id: `att_${Date.now()}` }]);
+      recordToSync = { ...rec, id: `att_${Date.now()}` };
+      setAttendanceRecords((prev) => [...prev, recordToSync]);
     }
+    syncAttendanceToSupabase([recordToSync]);
   };
 
   const batchMarkAttendance = (records: Omit<AttendanceRecord, 'id'>[]) => {
+    const syncedRecords: AttendanceRecord[] = [];
     setAttendanceRecords((prev) => {
       const updated = [...prev];
       records.forEach((newRec) => {
         const idx = updated.findIndex((r) => r.date === newRec.date && r.studentId === newRec.studentId);
         if (idx >= 0) {
-          updated[idx] = { ...updated[idx], ...newRec };
+          const merged = { ...updated[idx], ...newRec };
+          updated[idx] = merged;
+          syncedRecords.push(merged);
         } else {
-          updated.push({ ...newRec, id: `att_${Date.now()}_${Math.random()}` });
+          const fresh = { ...newRec, id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}` };
+          updated.push(fresh);
+          syncedRecords.push(fresh);
         }
       });
       return updated;
     });
+    if (syncedRecords.length > 0) {
+      syncAttendanceToSupabase(syncedRecords);
+    }
   };
 
   // Notifications
@@ -471,20 +679,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedAt: new Date().toISOString().split('T')[0],
     };
     setSupportItems((prev) => [newItem, ...prev]);
+    syncSupportItemToSupabase(newItem);
   };
 
   const updateSupportItem = (id: string, updated: Partial<StudentSupportItem>) => {
+    let targetUpdated: StudentSupportItem | null = null;
     setSupportItems((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? { ...item, ...updated, updatedAt: new Date().toISOString().split('T')[0] }
-          : item
-      )
+      prev.map((item) => {
+        if (item.id === id) {
+          const merged = { ...item, ...updated, updatedAt: new Date().toISOString().split('T')[0] };
+          targetUpdated = merged;
+          return merged;
+        }
+        return item;
+      })
     );
+    if (targetUpdated) {
+      syncSupportItemToSupabase(targetUpdated);
+    }
   };
 
   const deleteSupportItem = (id: string) => {
     setSupportItems((prev) => prev.filter((item) => item.id !== id));
+    deleteSupportItemFromSupabase(id);
   };
 
   // Question Bank
@@ -495,20 +712,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedAt: new Date().toISOString().split('T')[0],
     };
     setQuestions((prev) => [newQ, ...prev]);
+    syncQuestionToSupabase(newQ);
   };
 
   const updateQuestion = (id: string, updated: Partial<Question>) => {
+    let targetUpdated: Question | null = null;
     setQuestions((prev) =>
-      prev.map((q) =>
-        q.id === id
-          ? { ...q, ...updated, updatedAt: new Date().toISOString().split('T')[0] }
-          : q
-      )
+      prev.map((q) => {
+        if (q.id === id) {
+          const merged = { ...q, ...updated, updatedAt: new Date().toISOString().split('T')[0] };
+          targetUpdated = merged;
+          return merged;
+        }
+        return q;
+      })
     );
+    if (targetUpdated) {
+      syncQuestionToSupabase(targetUpdated);
+    }
   };
 
   const deleteQuestion = (id: string) => {
     setQuestions((prev) => prev.filter((q) => q.id !== id));
+    deleteQuestionFromSupabase(id);
   };
 
   // Materials
@@ -519,10 +745,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedAt: new Date().toISOString().split('T')[0],
     };
     setMaterials((prev) => [newM, ...prev]);
+    syncMaterialToSupabase(newM);
   };
 
   const deleteMaterial = (id: string) => {
     setMaterials((prev) => prev.filter((m) => m.id !== id));
+    deleteMaterialFromSupabase(id);
   };
 
   // Online assignments
@@ -694,6 +922,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         importDatabaseJson,
         viewingStudentId,
         setViewingStudentId,
+        supabaseStatus,
+        checkSupabaseStatus,
+        syncAllToSupabase,
+        fetchFromSupabaseCloud,
+        isSyncingSupabase,
       }}
     >
       {children}

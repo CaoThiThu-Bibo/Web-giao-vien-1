@@ -1,0 +1,58 @@
+[
+  {
+    "id": "usr_teacher_cothu",
+    "username": "caothithu",
+    "salt": "salt_cothu_tienyen",
+    "passwordHash": "ec03d9a5c2b7254795e1affccdd99e2558434469408478ae4b9d63b5db7c772c",
+    "fullName": "Cao Thị Thu",
+    "role": "teacher",
+    "title": "Giáo viên Lịch sử - Tổ KHXH",
+    "email": "caothithu@quangninh.edu.vn",
+    "phone": "0988 123 456",
+    "institution": "Trung tâm GDNN - GDTX TP Quảng Ninh - Phân hiệu Tiên Yên",
+    "avatar": "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=160&h=160&q=80",
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "lastLogin": "2026-10-28T08:59:26.700Z"
+  },
+  {
+    "id": "usr_admin",
+    "username": "admin",
+    "salt": "salt_admin_tienyen",
+    "passwordHash": "e09018f7813e86f76132db47a00e41213fea5900ce3ea854e224d7a56674fc02",
+    "fullName": "Quản trị viên Hệ thống",
+    "role": "admin",
+    "title": "Quản trị viên Công nghệ giáo dục",
+    "email": "admin.suhocso@quangninh.edu.vn",
+    "phone": "0203 387 654",
+    "institution": "Trung tâm GDNN - GDTX TP Quảng Ninh - Phân hiệu Tiên Yên",
+    "avatar": "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=160&h=160&q=80",
+    "createdAt": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "usr_student_an",
+    "username": "hocsinh",
+    "salt": "salt_student_an",
+    "passwordHash": "8dc278502c3a056804f230cfa751fd0a5e20a9dd8e5f003a87e64c2cf9569a31",
+    "fullName": "Nguyễn Văn An",
+    "role": "student",
+    "title": "Học viên Lớp 10A1 GDTX",
+    "email": "nguyenvanan.k10@gmail.com",
+    "phone": "0971 234 567",
+    "institution": "Trung tâm GDNN - GDTX TP Quảng Ninh - Phân hiệu Tiên Yên",
+    "avatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=160&h=160&q=80",
+    "createdAt": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "usr_1793177975959_j7e2r",
+    "username": "thithu_test",
+    "passwordHash": "1962fda467a275f0257646165e3b20a582930ca63e661576d1fb8858aad63425",
+    "salt": "587133400669888f27075ebef45aced0",
+    "fullName": "Nguyễn Thị Thu Lan",
+    "role": "teacher",
+    "title": "Giáo viên Lịch sử",
+    "institution": "Trung tâm GDNN - GDTX TP Quảng Ninh - Phân hiệu Tiên Yên",
+    "avatar": "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=160&h=160&q=80",
+    "createdAt": "2026-10-28T08:59:35.959Z",
+    "lastLogin": "2026-10-28T08:59:35.959Z"
+  }
+]

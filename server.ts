@@ -1,8 +1,11 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
+import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
 
@@ -14,6 +17,530 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// ---------------- SUPABASE CLIENT SETUP ----------------
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://gtwmtexqygqshjanxvyb.supabase.co';
+const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_lQDO7Hz33QUj8LSgS4miWg_G5G3RqAr';
+
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+console.log(`[Supabase] Initialized client for ${SUPABASE_URL}`);
+
+
+// ---------------- AUTHENTICATION & USERS STORAGE ----------------
+interface StoredUser {
+  id: string;
+  username: string;
+  passwordHash: string;
+  salt: string;
+  fullName: string;
+  role: 'teacher' | 'student' | 'admin';
+  title?: string;
+  email?: string;
+  phone?: string;
+  institution?: string;
+  avatar?: string;
+  createdAt: string;
+  lastLogin?: string;
+}
+
+const DATA_DIR = path.resolve(__dirname, 'data');
+const USERS_FILE = path.resolve(DATA_DIR, 'users.json');
+
+function hashPassword(password: string, salt: string): string {
+  return crypto.createHmac('sha256', salt).update(password).digest('hex');
+}
+
+function initializeUsers(): StoredUser[] {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+
+  if (fs.existsSync(USERS_FILE)) {
+    try {
+      const data = fs.readFileSync(USERS_FILE, 'utf-8');
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    } catch (e) {
+      console.warn('Error reading users file, resetting to defaults:', e);
+    }
+  }
+
+  // Pre-seed standard accounts
+  const seedUsers: StoredUser[] = [
+    {
+      id: 'usr_teacher_cothu',
+      username: 'caothithu',
+      salt: 'salt_cothu_tienyen',
+      passwordHash: hashPassword('123456', 'salt_cothu_tienyen'),
+      fullName: 'Cao Thị Thu',
+      role: 'teacher',
+      title: 'Giáo viên Lịch sử - Tổ KHXH',
+      email: 'caothithu@quangninh.edu.vn',
+      phone: '0988 123 456',
+      institution: 'Trung tâm GDNN - GDTX TP Quảng Ninh - Phân hiệu Tiên Yên',
+      avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=160&h=160&q=80',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    },
+    {
+      id: 'usr_admin',
+      username: 'admin',
+      salt: 'salt_admin_tienyen',
+      passwordHash: hashPassword('admin123', 'salt_admin_tienyen'),
+      fullName: 'Quản trị viên Hệ thống',
+      role: 'admin',
+      title: 'Quản trị viên Công nghệ giáo dục',
+      email: 'admin.suhocso@quangninh.edu.vn',
+      phone: '0203 387 654',
+      institution: 'Trung tâm GDNN - GDTX TP Quảng Ninh - Phân hiệu Tiên Yên',
+      avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=160&h=160&q=80',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    },
+    {
+      id: 'usr_student_an',
+      username: 'hocsinh',
+      salt: 'salt_student_an',
+      passwordHash: hashPassword('123456', 'salt_student_an'),
+      fullName: 'Nguyễn Văn An',
+      role: 'student',
+      title: 'Học viên Lớp 10A1 GDTX',
+      email: 'nguyenvanan.k10@gmail.com',
+      phone: '0971 234 567',
+      institution: 'Trung tâm GDNN - GDTX TP Quảng Ninh - Phân hiệu Tiên Yên',
+      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=160&h=160&q=80',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    },
+  ];
+
+  try {
+    fs.writeFileSync(USERS_FILE, JSON.stringify(seedUsers, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('Failed to save default users:', err);
+  }
+  return seedUsers;
+}
+
+let usersStore: StoredUser[] = initializeUsers();
+
+function saveUsersToDisk() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    fs.writeFileSync(USERS_FILE, JSON.stringify(usersStore, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('Error saving users to disk:', err);
+  }
+}
+
+function sanitizeUser(user: StoredUser) {
+  const { passwordHash, salt, ...safeUser } = user;
+  return safeUser;
+}
+
+// Generate simple mock token
+function generateToken(user: StoredUser) {
+  const payload = {
+    userId: user.id,
+    username: user.username,
+    role: user.role,
+    exp: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
+  };
+  return Buffer.from(JSON.stringify(payload)).toString('base64');
+}
+
+// Helper: sync seed users to Supabase if not present
+async function seedDefaultUsersToSupabase() {
+  try {
+    for (const u of usersStore) {
+      await supabase.from('users').upsert(
+        {
+          id: u.id,
+          username: u.username,
+          password_hash: u.passwordHash,
+          salt: u.salt,
+          full_name: u.fullName,
+          role: u.role,
+          title: u.title,
+          email: u.email,
+          phone: u.phone,
+          institution: u.institution,
+          avatar: u.avatar,
+          created_at: u.createdAt,
+          last_login: u.lastLogin,
+        },
+        { onConflict: 'username' }
+      );
+    }
+    console.log('[Supabase] Initial user accounts synced to Supabase.');
+  } catch (err: any) {
+    console.warn('[Supabase] Note on initial user sync:', err?.message);
+  }
+}
+
+// Supabase Status Endpoint
+app.get('/api/supabase/status', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('users').select('id').limit(1);
+    if (error) {
+      if (error.code === '42P01') {
+        return res.json({
+          connected: true,
+          tableReady: false,
+          url: SUPABASE_URL,
+          message: 'Đã kết nối máy chủ Supabase. Bảng "users" chưa được tạo trong SQL Editor.',
+        });
+      }
+      return res.json({
+        connected: false,
+        tableReady: false,
+        url: SUPABASE_URL,
+        message: error.message,
+      });
+    }
+    return res.json({
+      connected: true,
+      tableReady: true,
+      url: SUPABASE_URL,
+      message: 'Cơ sở dữ liệu Supabase đang hoạt động bình thường.',
+    });
+  } catch (err: any) {
+    return res.json({
+      connected: false,
+      tableReady: false,
+      url: SUPABASE_URL,
+      message: err?.message || 'Không thể kết nối Supabase.',
+    });
+  }
+});
+
+// Auth API: Register
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { username, password, fullName, role = 'student', email, phone, title } = req.body;
+
+    if (!username || typeof username !== 'string' || username.trim().length < 3) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tên đăng nhập phải có ít nhất 3 ký tự (chỉ gồm chữ cái, số và dấu gạch dưới).',
+      });
+    }
+
+    const cleanUsername = username.trim().toLowerCase();
+
+    // Check valid username format
+    if (!/^[a-zA-Z0-9_.-]+$/.test(cleanUsername)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tên đăng nhập không được chứa ký tự đặc biệt hoặc khoảng trắng.',
+      });
+    }
+
+    if (!password || typeof password !== 'string' || password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'Mật khẩu phải có độ dài tối thiểu 6 ký tự.',
+      });
+    }
+
+    if (!fullName || typeof fullName !== 'string' || fullName.trim().length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng nhập họ và tên đầy đủ của bạn.',
+      });
+    }
+
+    // Check existing username in Supabase
+    try {
+      const { data: suExisting } = await supabase
+        .from('users')
+        .select('id')
+        .eq('username', cleanUsername)
+        .maybeSingle();
+
+      if (suExisting) {
+        return res.status(409).json({
+          success: false,
+          message: `Tên đăng nhập "${cleanUsername}" đã tồn tại trên Supabase. Vui lòng chọn tên khác!`,
+        });
+      }
+    } catch (e) {
+      // Supabase table may not exist yet, fallback to local check
+    }
+
+    // Check existing username in local
+    const exists = usersStore.some((u) => u.username.toLowerCase() === cleanUsername);
+    if (exists) {
+      return res.status(409).json({
+        success: false,
+        message: `Tên đăng nhập "${cleanUsername}" đã tồn tại. Vui lòng chọn tên khác!`,
+      });
+    }
+
+    const salt = crypto.randomBytes(16).toString('hex');
+    const passwordHash = hashPassword(password, salt);
+
+    const newUser: StoredUser = {
+      id: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      username: cleanUsername,
+      passwordHash,
+      salt,
+      fullName: fullName.trim(),
+      role: role === 'teacher' || role === 'admin' ? role : 'student',
+      title: title || (role === 'teacher' ? 'Giáo viên Lịch sử' : role === 'admin' ? 'Quản trị viên' : 'Học sinh GDTX'),
+      email: email ? String(email).trim() : undefined,
+      phone: phone ? String(phone).trim() : undefined,
+      institution: 'Trung tâm GDNN - GDTX TP Quảng Ninh - Phân hiệu Tiên Yên',
+      avatar:
+        role === 'teacher'
+          ? 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=160&h=160&q=80'
+          : 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=160&h=160&q=80',
+      createdAt: new Date().toISOString(),
+      lastLogin: new Date().toISOString(),
+    };
+
+    // Save to Supabase
+    try {
+      await supabase.from('users').upsert({
+        id: newUser.id,
+        username: newUser.username,
+        password_hash: newUser.passwordHash,
+        salt: newUser.salt,
+        full_name: newUser.fullName,
+        role: newUser.role,
+        title: newUser.title,
+        email: newUser.email,
+        phone: newUser.phone,
+        institution: newUser.institution,
+        avatar: newUser.avatar,
+        created_at: newUser.createdAt,
+        last_login: newUser.lastLogin,
+      });
+    } catch (e) {
+      console.warn('[Supabase] Could not insert new user to Supabase:', e);
+    }
+
+    // Save to local backup
+    usersStore.push(newUser);
+    saveUsersToDisk();
+
+    const token = generateToken(newUser);
+    return res.status(201).json({
+      success: true,
+      message: 'Đăng ký tài khoản thành công và đã lưu trữ!',
+      user: sanitizeUser(newUser),
+      token,
+    });
+  } catch (error: any) {
+    console.error('Register error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Có lỗi xảy ra trên máy chủ trong quá trình đăng ký.',
+    });
+  }
+});
+
+// Auth API: Login
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng nhập cả tên đăng nhập và mật khẩu.',
+      });
+    }
+
+    const cleanUsername = String(username).trim().toLowerCase();
+    let user = usersStore.find((u) => u.username.toLowerCase() === cleanUsername);
+
+    // Try finding in Supabase first
+    try {
+      const { data: suUser, error: suErr } = await supabase
+        .from('users')
+        .select('*')
+        .eq('username', cleanUsername)
+        .maybeSingle();
+
+      if (suUser && !suErr) {
+        user = {
+          id: suUser.id,
+          username: suUser.username,
+          passwordHash: suUser.password_hash,
+          salt: suUser.salt,
+          fullName: suUser.full_name,
+          role: suUser.role,
+          title: suUser.title,
+          email: suUser.email,
+          phone: suUser.phone,
+          institution: suUser.institution,
+          avatar: suUser.avatar,
+          createdAt: suUser.created_at,
+          lastLogin: suUser.last_login,
+        };
+      }
+    } catch (e) {
+      // Supabase fallback to local usersStore
+    }
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Tên đăng nhập không tồn tại trong hệ thống.',
+      });
+    }
+
+    const testHash = hashPassword(String(password), user.salt);
+    if (testHash !== user.passwordHash) {
+      return res.status(401).json({
+        success: false,
+        message: 'Mật khẩu không chính xác. Vui lòng kiểm tra lại!',
+      });
+    }
+
+    // Update last login
+    user.lastLogin = new Date().toISOString();
+    saveUsersToDisk();
+
+    try {
+      await supabase.from('users').update({ last_login: user.lastLogin }).eq('username', user.username);
+    } catch (e) {}
+
+    const token = generateToken(user);
+    return res.json({
+      success: true,
+      message: `Đăng nhập thành công! Chào mừng ${user.fullName}.`,
+      user: sanitizeUser(user),
+      token,
+    });
+  } catch (error: any) {
+    console.error('Login error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Có lỗi xảy ra trên máy chủ khi đăng nhập.',
+    });
+  }
+});
+
+// Auth API: Get Current User (Me)
+app.get('/api/auth/me', (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'Chưa đăng nhập' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    const decoded = JSON.parse(Buffer.from(token, 'base64').toString('utf-8'));
+
+    if (!decoded.userId || decoded.exp < Date.now()) {
+      return res.status(401).json({ success: false, message: 'Phiên đăng nhập đã hết hạn.' });
+    }
+
+    const user = usersStore.find((u) => u.id === decoded.userId || u.username === decoded.username);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Người dùng không tồn tại.' });
+    }
+
+    return res.json({
+      success: true,
+      user: sanitizeUser(user),
+    });
+  } catch (e) {
+    return res.status(401).json({ success: false, message: 'Token không hợp lệ.' });
+  }
+});
+
+// Auth API: List all accounts
+app.get('/api/auth/users', async (req, res) => {
+  try {
+    const { data: suUsers } = await supabase.from('users').select('*');
+    if (suUsers && Array.isArray(suUsers) && suUsers.length > 0) {
+      const mapped = suUsers.map((u: any) => ({
+        id: u.id,
+        username: u.username,
+        fullName: u.full_name,
+        role: u.role,
+        title: u.title,
+        email: u.email,
+        phone: u.phone,
+        institution: u.institution,
+        avatar: u.avatar,
+        createdAt: u.created_at,
+        lastLogin: u.last_login,
+      }));
+      return res.json({
+        success: true,
+        users: mapped,
+        source: 'supabase',
+      });
+    }
+  } catch (e) {}
+
+  return res.json({
+    success: true,
+    users: usersStore.map(sanitizeUser),
+    source: 'local',
+  });
+});
+
+// Auth API: Change Password
+app.post('/api/auth/change-password', async (req, res) => {
+  try {
+    const { username, oldPassword, newPassword } = req.body;
+    if (!username || !oldPassword || !newPassword) {
+      return res.status(400).json({ success: false, message: 'Vui lòng điền đầy đủ các thông tin.' });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ success: false, message: 'Mật khẩu mới phải từ 6 ký tự trở lên.' });
+    }
+
+    const cleanUsername = String(username).trim().toLowerCase();
+    let user = usersStore.find((u) => u.username.toLowerCase() === cleanUsername);
+
+    // Try finding from Supabase
+    try {
+      const { data: suUser } = await supabase.from('users').select('*').eq('username', cleanUsername).maybeSingle();
+      if (suUser) {
+        user = {
+          id: suUser.id,
+          username: suUser.username,
+          passwordHash: suUser.password_hash,
+          salt: suUser.salt,
+          fullName: suUser.full_name,
+          role: suUser.role,
+          createdAt: suUser.created_at,
+        };
+      }
+    } catch (e) {}
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Tài khoản không tồn tại.' });
+    }
+
+    const oldHash = hashPassword(oldPassword, user.salt);
+    if (oldHash !== user.passwordHash) {
+      return res.status(400).json({ success: false, message: 'Mật khẩu hiện tại không chính xác.' });
+    }
+
+    const newSalt = user.salt;
+    const newHash = hashPassword(newPassword, newSalt);
+    user.passwordHash = newHash;
+    saveUsersToDisk();
+
+    // Update in Supabase
+    try {
+      await supabase.from('users').update({ password_hash: newHash }).eq('username', user.username);
+    } catch (e) {}
+
+    return res.json({ success: true, message: 'Đổi mật khẩu thành công trên hệ thống!' });
+  } catch (e: any) {
+    return res.status(500).json({ success: false, message: 'Lỗi cập nhật mật khẩu.' });
+  }
+});
+
 
 // Initialize Google Gen AI
 const apiKey = process.env.GEMINI_API_KEY;
@@ -323,6 +850,7 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[SỬ HỌC SỐ] Server running at http://0.0.0.0:${PORT}`);
+    seedDefaultUsersToSupabase();
   });
 }
 

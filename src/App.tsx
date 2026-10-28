@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { Header } from './components/common/Header';
 import { Sidebar } from './components/common/Sidebar';
 import { Footer } from './components/common/Footer';
@@ -15,11 +16,31 @@ import { DigitalLibrary } from './components/materials/DigitalLibrary';
 import { OnlineClassroom } from './components/online-room/OnlineClassroom';
 import { StudentSupport } from './components/support/StudentSupport';
 import { SystemSettings } from './components/settings/SystemSettings';
+import { AuthLanding } from './components/auth/AuthLanding';
 import { Menu, X } from 'lucide-react';
 
 const MainLayout: React.FC = () => {
-  const { activeTab } = useApp();
+  const { activeTab, setUserRole, systemConfig, updateSystemConfig } = useApp();
+  const { currentUser, isAuthenticated } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isGuestMode, setIsGuestMode] = useState(false);
+
+  // Sync role and teacher name from logged in user
+  useEffect(() => {
+    if (currentUser) {
+      if (currentUser.role && currentUser.role !== systemConfig.activeRole) {
+        setUserRole(currentUser.role);
+      }
+      if (currentUser.role === 'teacher' && currentUser.fullName && currentUser.fullName !== systemConfig.teacherName) {
+        updateSystemConfig({ teacherName: currentUser.fullName });
+      }
+    }
+  }, [currentUser]);
+
+  // If user is not logged in and hasn't chosen guest preview mode, show the full AuthLanding
+  if (!isAuthenticated && !isGuestMode) {
+    return <AuthLanding onBypassAsGuest={() => setIsGuestMode(true)} />;
+  }
 
   const renderActiveModule = () => {
     switch (activeTab) {
@@ -56,6 +77,19 @@ const MainLayout: React.FC = () => {
     <div className="min-h-screen flex flex-col bg-[#F3F8FC] font-serif text-slate-800">
       {/* Top Header */}
       <Header />
+
+      {/* Guest warning banner if viewing as guest */}
+      {!isAuthenticated && isGuestMode && (
+        <div className="bg-amber-500 text-white text-xs py-1.5 px-4 text-center font-sans font-bold flex items-center justify-center gap-2 shadow-sm">
+          <span>Bạn đang xem hệ thống với tư cách Khách trải nghiệm.</span>
+          <button
+            onClick={() => setIsGuestMode(false)}
+            className="underline hover:text-amber-100 cursor-pointer ml-1"
+          >
+            Đăng nhập / Đăng ký tài khoản ngay
+          </button>
+        </div>
+      )}
 
       {/* Mobile Menu Bar Toggle */}
       <div className="lg:hidden flex items-center justify-between px-4 py-2.5 bg-[#073B66] text-white border-b border-[#085a96]/40">
@@ -105,8 +139,10 @@ const MainLayout: React.FC = () => {
 
 export default function App() {
   return (
-    <AppProvider>
-      <MainLayout />
-    </AppProvider>
+    <AuthProvider>
+      <AppProvider>
+        <MainLayout />
+      </AppProvider>
+    </AuthProvider>
   );
 }

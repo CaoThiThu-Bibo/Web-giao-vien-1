@@ -229,3 +229,25 @@ export interface SystemConfig {
   activeRole: UserRole;
   currentStudentId?: string;
 }
+
+export interface UserAccount {
+  id: string;
+  username: string;
+  fullName: string;
+  role: UserRole;
+  title?: string;
+  email?: string;
+  phone?: string;
+  institution?: string;
+  avatar?: string;
+  createdAt: string;
+  lastLogin?: string;
+}
+
+export interface AuthResponse {
+  success: boolean;
+  message?: string;
+  user?: UserAccount;
+  token?: string;
+}
+
