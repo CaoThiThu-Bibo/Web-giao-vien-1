@@ -230,14 +230,29 @@ export const ReportsAnalytics: React.FC = () => {
           <div className="space-y-3 pt-2">
             <div>
               <div className="flex justify-between text-xs mb-1">
-                <span className="font-bold text-[#0878C9]">Giỏi (8.0 - 10.0 điểm)</span>
-                <span className="font-bold text-[#0878C9]">
+                <span className="font-bold text-emerald-700">Mức Tốt (8.0 - 10.0 điểm | Định kỳ ≥ 6.5)</span>
+                <span className="font-bold text-emerald-700">
                   {countGioi} HS ({pctGioi}%)
                 </span>
               </div>
               <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
                 <div
                   style={{ width: `${pctGioi}%` }}
+                  className="h-full bg-emerald-600 rounded-full transition-all duration-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <div className="flex justify-between text-xs mb-1">
+                <span className="font-bold text-[#0878C9]">Mức Khá (6.5 - 7.9 điểm | Định kỳ ≥ 5.0)</span>
+                <span className="font-bold text-[#0878C9]">
+                  {countKha} HS ({pctKha}%)
+                </span>
+              </div>
+              <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
+                <div
+                  style={{ width: `${pctKha}%` }}
                   className="h-full bg-[#0878C9] rounded-full transition-all duration-500"
                 />
               </div>
@@ -245,22 +260,7 @@ export const ReportsAnalytics: React.FC = () => {
 
             <div>
               <div className="flex justify-between text-xs mb-1">
-                <span className="font-bold text-emerald-600">Khá (6.5 - 7.9 điểm)</span>
-                <span className="font-bold text-emerald-600">
-                  {countKha} HS ({pctKha}%)
-                </span>
-              </div>
-              <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
-                <div
-                  style={{ width: `${pctKha}%` }}
-                  className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-                />
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between text-xs mb-1">
-                <span className="font-bold text-amber-600">Trung bình (5.0 - 6.4 điểm)</span>
+                <span className="font-bold text-amber-600">Mức Đạt (5.0 - 6.4 điểm | Định kỳ ≥ 3.5)</span>
                 <span className="font-bold text-amber-600">
                   {countTB} HS ({pctTB}%)
                 </span>
@@ -275,7 +275,7 @@ export const ReportsAnalytics: React.FC = () => {
 
             <div>
               <div className="flex justify-between text-xs mb-1">
-                <span className="font-bold text-rose-600">Yếu (Dưới 5.0 điểm)</span>
+                <span className="font-bold text-rose-600">Mức Chưa đạt (&lt; 5.0 điểm)</span>
                 <span className="font-bold text-rose-600">
                   {countYeu} HS ({pctYeu}%)
                 </span>

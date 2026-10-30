@@ -20,7 +20,7 @@ export const initialSystemConfig: SystemConfig = {
   branch: 'Phân hiệu Tiên Yên',
   academicYear: '2024 - 2025',
   semester: 'Học kỳ II',
-  evaluationRule: 'Thông tư 22/2021/TT-BGDĐT & GDTX THPT',
+  evaluationRule: 'Thông tư 43/2021/TT-BGDĐT (GDTX THPT - 52 tiết/năm)',
   activeRole: 'teacher',
 };
 
@@ -1215,13 +1215,14 @@ export const initialSupportItems: StudentSupportItem[] = [
 ];
 
 export const initialQuestions: Question[] = [
+  // --- 1. TRẮC NGHIỆM ĐƠN (CHỈ CHỌN MỘT ĐÁP ÁN) ---
   {
     id: 'q_01',
     grade: 10,
     topic: 'Chương I: Lịch sử và Sử học',
     lesson: 'Bài 1: Hiện thực lịch sử và nhận thức lịch sử',
     knowledgeDomain: 'Khái niệm hiện thực lịch sử',
-    type: 'Trắc nghiệm',
+    type: 'Trắc nghiệm đơn',
     cognitiveLevel: 'Nhận biết',
     content: 'Hiện thực lịch sử là gì?',
     options: [
@@ -1242,7 +1243,7 @@ export const initialQuestions: Question[] = [
     topic: 'Văn minh Đại Việt',
     lesson: 'Bài 11: Một số nền văn minh trên đất nước Việt Nam',
     knowledgeDomain: 'Văn minh Văn Lang - Âu Lạc',
-    type: 'Trắc nghiệm',
+    type: 'Trắc nghiệm đơn',
     cognitiveLevel: 'Thông hiểu',
     content: 'Thành tựu tiêu biểu nhất về kỹ thuật quân sự của cư dân Âu Lạc dưới thời An Dương Vương là gì?',
     options: [
@@ -1263,7 +1264,7 @@ export const initialQuestions: Question[] = [
     topic: 'Chiến tranh bảo vệ Tổ quốc và giải phóng dân tộc',
     lesson: 'Bài 7: Chiến tranh bảo vệ Tổ quốc trong lịch sử Việt Nam',
     knowledgeDomain: 'Kháng chiến chống quân Mông - Nguyên',
-    type: 'Trắc nghiệm',
+    type: 'Trắc nghiệm đơn',
     cognitiveLevel: 'Vận dụng',
     content: 'Kế sách "Vườn không nhà trống" được quân dân nhà Trần áp dụng hiệu quả nhất nhằm mục đích gì?',
     options: [
@@ -1284,7 +1285,7 @@ export const initialQuestions: Question[] = [
     topic: 'Việt Nam từ năm 1945 đến năm 1954',
     lesson: 'Bài 12: Kháng chiến chống thực dân Pháp (1945 - 1954)',
     knowledgeDomain: 'Chiến thắng Điện Biên Phủ 1954',
-    type: 'Trắc nghiệm',
+    type: 'Trắc nghiệm đơn',
     cognitiveLevel: 'Vận dụng cao',
     content: 'Quyết định chuyển phương châm tác chiến từ "Đánh nhanh, thắng nhanh" sang "Đánh chắc, tiến chắc" của Đại tướng Võ Nguyên Giáp trong chiến dịch Điện Biên Phủ thể hiện:',
     options: [
@@ -1299,20 +1300,296 @@ export const initialQuestions: Question[] = [
     author: 'Cao Thị Thu',
     updatedAt: '2025-02-20',
   },
+
+  // --- 2. TRẮC NGHIỆM ĐÚNG SAI (CHUẨN BỘ GD&ĐT TỪ NĂM 2025) ---
   {
-    id: 'q_05',
+    id: 'q_05_tf',
+    grade: 12,
+    topic: 'Cách mạng tháng Tám năm 1945 và Khai sinh nước VNDCCH',
+    lesson: 'Bài 10: Khởi nghĩa vũ trang giành chính quyền',
+    knowledgeDomain: 'Bản Tuyên ngôn Độc lập ngày 2/9/1945',
+    type: 'Trắc nghiệm đúng sai',
+    cognitiveLevel: 'Thông hiểu',
+    content: 'Đọc đoạn tư liệu sau đây trích trong Tuyên ngôn Độc lập (ngày 2/9/1945):\n"Tất cả mọi người đều sinh ra có quyền bình đẳng. Tạo hóa cho họ những quyền không ai có thể xâm phạm được; trong những quyền ấy, có quyền được sống, quyền tự do và quyền mưu cầu hạnh phúc... Nước Việt Nam có quyền hưởng tự do và độc lập, và sự thật đã thành một nước tự do, độc lập. Toàn thể dân tộc Việt Nam quyết đem tất cả tinh thần và lực lượng, tính mạng và của cải để giữ vững quyền tự do, độc lập ấy."\n(Hồ Chí Minh: Toàn tập, NXB Chính trị quốc gia Sự thật)',
+    trueFalseStatements: [
+      {
+        id: 'a',
+        statement: 'Tuyên ngôn Độc lập đã mở đầu bằng việc trích dẫn bản Tuyên ngôn Độc lập năm 1776 của nước Mỹ và Tuyên ngôn Nhân quyền và Dân quyền năm 1789 của Cách mạng Pháp.',
+        isCorrect: true,
+        explanation: 'Nhằm dùng chính lý lẽ tiến bộ của đối phương để bảo vệ quyền tự do độc lập chính nghĩa của dân tộc Việt Nam.',
+      },
+      {
+        id: 'b',
+        statement: 'Bản Tuyên ngôn Độc lập được thông qua và tuyên đọc lần đầu tiên tại Đại hội Quốc dân Tân Trào (Tuyên Quang).',
+        isCorrect: false,
+        explanation: 'Đại hội Quốc dân Tân Trào họp ngày 16-17/8/1945 chỉ thông qua lệnh Tổng khởi nghĩa. Bản Tuyên ngôn Độc lập được soạn thảo tại số 48 Hàng Ngang và tuyên đọc ngày 2/9/1945 tại Quảng trường Ba Đình (Hà Nội).',
+      },
+      {
+        id: 'c',
+        statement: 'Văn kiện đã phát triển quyền tự nhiên của con người (quyền sống, quyền tự do, quyền mưu cầu hạnh phúc) thành quyền tự quyết thiêng liêng của toàn thể các dân tộc trên thế giới.',
+        isCorrect: true,
+        explanation: 'Đây là cống hiến vĩ đại về tư tưởng lý luận của Chủ tịch Hồ Chí Minh đối với phong trào giải phóng dân tộc thế giới.',
+      },
+      {
+        id: 'd',
+        statement: 'Bản Tuyên ngôn Độc lập tuyên bố xóa bỏ chế độ phong kiến tồn tại hàng nghìn năm và chấm dứt ách thống trị của thực dân Pháp, phát xít Nhật trên đất nước ta.',
+        isCorrect: true,
+        explanation: 'Khai sinh ra nước Việt Nam Dân chủ Cộng hòa - nhà nước công nông đầu tiên ở Đông Nam Á.',
+      },
+    ],
+    correctAnswer: 'a-ĐÚNG, b-SAI, c-ĐÚNG, d-ĐÚNG',
+    explanation: 'Đáp án: a - Đúng; b - Sai (đọc tại Ba Đình chứ không phải Tân Trào); c - Đúng; d - Đúng.',
+    source: 'Hồ Chí Minh Toàn tập & SGK Lịch sử 12',
+    author: 'Cao Thị Thu',
+    updatedAt: '2025-02-28',
+  },
+  {
+    id: 'q_06_tf',
+    grade: 11,
+    topic: 'Phong trào yêu nước chống thực dân Pháp cuối thế kỷ XIX',
+    lesson: 'Bài 16: Phong trào Cần Vương (1885 - 1896)',
+    knowledgeDomain: 'Tính chất và ý nghĩa phong trào Cần Vương',
+    type: 'Trắc nghiệm đúng sai',
+    cognitiveLevel: 'Vận dụng',
+    content: 'Đọc đoạn trích sau về phong trào Cần Vương:\n"Ngày 13/7/1885, tại căn cứ Tân Sở (Quảng Trị), Tôn Thất Thuyết nhân danh vua trẻ Hàm Nghi ban dụ Cần Vương kêu gọi văn thân, sĩ phu và nhân dân cả nước đứng lên phò vua cứu nước. Phong trào nhanh chóng bùng nổ, kéo dài hơn một thập kỷ qua hai giai đoạn sôi nổi, tiêu biểu là các cuộc khởi nghĩa Ba Đình, Bãi Sậy, Hương Khê..."',
+    trueFalseStatements: [
+      {
+        id: 'a',
+        statement: 'Phong trào Cần Vương thực chất là phong trào đấu tranh yêu nước chống Pháp của nhân dân theo khuynh hướng phong kiến.',
+        isCorrect: true,
+        explanation: 'Mục tiêu là "Cần Vương" (giúp vua) khôi phục lại quốc gia phong kiến độc lập tự chủ.',
+      },
+      {
+        id: 'b',
+        statement: 'Khởi nghĩa Hương Khê (1885 - 1896) do Phan Đình Phùng lãnh đạo là cuộc khởi nghĩa tiêu biểu nhất, đánh dấu bước kết thúc của phong trào Cần Vương.',
+        isCorrect: true,
+        explanation: 'Khi Phan Đình Phùng hi sinh và căn cứ Vụ Quang bị vỡ năm 1896, phong trào Cần Vương hoàn toàn chấm dứt.',
+      },
+      {
+        id: 'c',
+        statement: 'Khởi nghĩa nông dân Yên Thế do Hoàng Hoa Thám lãnh đạo là một cuộc khởi nghĩa nằm trong hệ thống phong trào Cần Vương.',
+        isCorrect: false,
+        explanation: 'Khởi nghĩa Yên Thế là phong trào tự vệ tự phát của nông dân, không chịu sự chỉ huy của chiếu Cần Vương và kéo dài đến tận năm 1913.',
+      },
+      {
+        id: 'd',
+        statement: 'Sự thất bại của phong trào Cần Vương chứng minh độc lập dân tộc không thể gắn liền với hệ tư tưởng phong kiến lỗi thời.',
+        isCorrect: true,
+        explanation: 'Mở đường cho sự du nhập và chuyển biến sang khuynh hướng cứu nước dân chủ tư sản đầu thế kỷ XX.',
+      },
+    ],
+    correctAnswer: 'a-ĐÚNG, b-ĐÚNG, c-SAI, d-ĐÚNG',
+    explanation: 'Đáp án: a - Đúng; b - Đúng; c - Sai (Yên Thế độc lập với Cần Vương); d - Đúng.',
+    source: 'SGK Lịch sử 11',
+    author: 'Cao Thị Thu',
+    updatedAt: '2025-03-02',
+  },
+
+  // --- 3. BÀI TẬP ĐIỀN TỪ (FILL IN THE BLANKS) ---
+  {
+    id: 'q_07_blank',
+    grade: 12,
+    topic: 'Phong trào cách mạng Việt Nam 1930 - 1945',
+    lesson: 'Bài 8: Sự thành lập Đảng Cộng sản Việt Nam',
+    knowledgeDomain: 'Hội nghị hợp nhất thành lập Đảng (đầu năm 1930)',
+    type: 'Điền từ',
+    cognitiveLevel: 'Thông hiểu',
+    content: 'Hãy chọn các từ/cụm từ thích hợp trong ngân hàng từ để điền vào chỗ trống [1], [2], [3], [4] trong đoạn tư liệu lịch sử sau:\n\n"Đầu mùa xuân năm [1], tại [2] (Trung Quốc), dưới sự chủ trì sáng suốt của đồng chí [3], Hội nghị hợp nhất ba tổ chức cộng sản đã họp và nhất trí thành lập một chính đảng duy nhất lấy tên là Đảng Cộng sản Việt Nam. Sự ra đời của Đảng đã chấm dứt hoàn toàn thời kỳ [4] sâu sắc về đường lối và giai cấp lãnh đạo của cách mạng Việt Nam."',
+    wordBank: [
+      '1930',
+      'Cửu Long (Hương Cảng)',
+      'Nguyễn Ái Quốc',
+      'khủng hoảng',
+      '1945',
+      'Tân Trào',
+      'Trần Phú',
+      'chia rẽ',
+    ],
+    blankItems: [
+      { id: 1, blankLabel: '[1]', correctWord: '1930' },
+      { id: 2, blankLabel: '[2]', correctWord: 'Cửu Long (Hương Cảng)' },
+      { id: 3, blankLabel: '[3]', correctWord: 'Nguyễn Ái Quốc' },
+      { id: 4, blankLabel: '[4]', correctWord: 'khủng hoảng' },
+    ],
+    correctAnswer: '[1] 1930; [2] Cửu Long (Hương Cảng); [3] Nguyễn Ái Quốc; [4] khủng hoảng',
+    explanation: 'Hội nghị thành lập Đảng diễn ra từ ngày 6/1/1930 tại Hương Cảng do Nguyễn Ái Quốc chủ trì, chấm dứt khủng hoảng đường lối cứu nước.',
+    source: 'Lịch sử Đảng Cộng sản Việt Nam & SGK Lịch sử 12',
+    author: 'Cao Thị Thu',
+    updatedAt: '2025-03-04',
+  },
+  {
+    id: 'q_08_blank',
+    grade: 10,
+    topic: 'Văn minh Văn Lang - Âu Lạc',
+    lesson: 'Bài 11: Nhà nước đầu tiên trên lãnh thổ Việt Nam',
+    knowledgeDomain: 'Tổ chức xã hội và đời sống vật chất thời Văn Lang',
+    type: 'Điền từ',
+    cognitiveLevel: 'Nhận biết',
+    content: 'Điền các cụm từ thích hợp vào các vị trí [1], [2], [3], [4] để hoàn thiện thông tin về nhà nước Văn Lang:\n\n"Đứng đầu nhà nước Văn Lang là [1], nắm giữ mọi quyền lực tối cao về quân sự và chính trị. Giúp việc cho vua có các [2], quản lý các bộ là các Lạc tướng. Đơn vị cơ sở của làng xã thời bấy giờ gọi là [3], người đứng đầu gọi là Bồ chính. Cư dân sống định cư bằng nghề chính là [4]."',
+    wordBank: [
+      'Hùng Vương',
+      'Lạc hầu',
+      'chiềng, chạ',
+      'nông nghiệp trồng lúa nước',
+      'An Dương Vương',
+      'quan đại thần',
+      'thương nghiệp biển',
+    ],
+    blankItems: [
+      { id: 1, blankLabel: '[1]', correctWord: 'Hùng Vương' },
+      { id: 2, blankLabel: '[2]', correctWord: 'Lạc hầu' },
+      { id: 3, blankLabel: '[3]', correctWord: 'chiềng, chạ' },
+      { id: 4, blankLabel: '[4]', correctWord: 'nông nghiệp trồng lúa nước' },
+    ],
+    correctAnswer: '[1] Hùng Vương; [2] Lạc hầu; [3] chiềng, chạ; [4] nông nghiệp trồng lúa nước',
+    explanation: 'Cơ cấu nhà nước sơ khai thời các vua Hùng: Vua Hùng đứng đầu, Lạc hầu giúp việc, cơ sở làng xã là chiềng chạ gắn với văn minh lúa nước.',
+    source: 'SGK Lịch sử 10',
+    author: 'Cao Thị Thu',
+    updatedAt: '2025-03-05',
+  },
+
+  // --- 4. BÀI TẬP NỐI TỪ / GHÉP ĐÔI (MATCHING) ---
+  {
+    id: 'q_09_match',
+    grade: 12,
+    topic: 'Cuộc kháng chiến chống thực dân Pháp (1945 - 1954)',
+    lesson: 'Bài 13: Các chiến dịch quân sự lớn của quân và dân ta',
+    knowledgeDomain: 'Ý nghĩa các chiến dịch quân sự kháng chiến chống Pháp',
+    type: 'Nối từ',
+    cognitiveLevel: 'Vận dụng',
+    content: 'Em hãy ghép các chiến dịch quân sự ở Cột A với ý nghĩa chiến lược tương ứng ở Cột B sao cho chính xác nhất:',
+    matchingPairs: [
+      {
+        id: '1',
+        left: '1. Chiến dịch Việt Bắc thu - đông (1947)',
+        right: 'A. Đập tan hoàn toàn kế hoạch Na-va, giáng đòn quyết định buộc Pháp ký Hiệp định Giơ-ne-vơ.',
+        matchedKey: 'B',
+      },
+      {
+        id: '2',
+        left: '2. Chiến dịch Biên giới thu - đông (1950)',
+        right: 'B. Đánh bại chiến lược "đánh nhanh thắng nhanh", bảo vệ tuyệt đối an toàn cơ quan đầu não kháng chiến.',
+        matchedKey: 'C',
+      },
+      {
+        id: '3',
+        left: '3. Cuộc Tiến công chiến lược Đông - Xuân (1953 - 1954)',
+        right: 'C. Ta giành được thế chủ động chiến lược trên chiến trường chính Bắc Bộ, khai thông biên giới Việt - Trung.',
+        matchedKey: 'D',
+      },
+      {
+        id: '4',
+        left: '4. Chiến dịch Điện Biên Phủ (1954)',
+        right: 'D. Buộc quân cơ động Pháp phải phân tán thành 5 nơi tập trung quân, bước đầu làm phá sản kế hoạch Na-va.',
+        matchedKey: 'A',
+      },
+    ],
+    correctAnswer: '1 - B; 2 - C; 3 - D; 4 - A',
+    explanation: 'Ghép chính xác: 1 nối với B (bảo vệ Việt Bắc); 2 nối với C (giành quyền chủ động); 3 nối với D (phân tán lực lượng Pháp); 4 nối với A (chiến thắng Điện Biên Phủ).',
+    source: 'Lịch sử Quân sự Việt Nam & SGK Lịch sử 12',
+    author: 'Cao Thị Thu',
+    updatedAt: '2025-03-06',
+  },
+  {
+    id: 'q_10_match',
+    grade: 11,
+    topic: 'Văn minh Đại Việt qua các triều đại phong kiến',
+    lesson: 'Bài 14: Nhà nước và pháp luật thời phong kiến Việt Nam',
+    knowledgeDomain: 'Các bộ luật thành văn tiêu biểu trong lịch sử dân tộc',
+    type: 'Nối từ',
+    cognitiveLevel: 'Thông hiểu',
+    content: 'Hãy nối các triều đại phong kiến ở Cột A tương ứng với bộ luật thành văn tiêu biểu được ban hành ở Cột B:',
+    matchingPairs: [
+      {
+        id: '1',
+        left: '1. Thời nhà Lý (năm 1042)',
+        right: 'A. Hoàng Việt luật lệ (Bộ luật Gia Long với 398 điều luật quy củ).',
+        matchedKey: 'B',
+      },
+      {
+        id: '2',
+        left: '2. Thời nhà Lê sơ (thế kỷ XV)',
+        right: 'B. Bộ luật Hình thư (bộ luật thành văn đầu tiên của nhà nước Đại Việt).',
+        matchedKey: 'C',
+      },
+      {
+        id: '3',
+        left: '3. Thời nhà Nguyễn (năm 1815)',
+        right: 'C. Quốc triều hình luật (Luật Hồng Đức - đỉnh cao pháp luật tiến bộ thời phong kiến).',
+        matchedKey: 'A',
+      },
+      {
+        id: '4',
+        left: '4. Thời nhà Trần (thế kỷ XIII)',
+        right: 'D. Quốc triều thông chế và Hình luật thời Trần kế thừa và bổ sung bộ Hình thư.',
+        matchedKey: 'D',
+      },
+    ],
+    correctAnswer: '1 - B; 2 - C; 3 - A; 4 - D',
+    explanation: '1-B (Hình thư năm 1042 thời Lý Thái Tông); 2-C (Luật Hồng Đức thời Lê Thánh Tông); 3-A (Luật Gia Long thời Nguyễn); 4-D (Hình luật thời Trần).',
+    source: 'Đại Việt sử ký toàn thư & SGK Lịch sử 11',
+    author: 'Cao Thị Thu',
+    updatedAt: '2025-03-07',
+  },
+
+  // --- 5. TỰ LUẬN (ESSAY & RUBRIC BIỂU ĐIỂM) ---
+  {
+    id: 'q_11_essay',
+    grade: 12,
+    topic: 'Cuộc kháng chiến chống thực dân Pháp (1945 - 1954)',
+    lesson: 'Bài 12: Kháng chiến toàn quốc thắng lợi',
+    knowledgeDomain: 'Ý nghĩa lịch sử chiến thắng Điện Biên Phủ 1954',
+    type: 'Tự luận',
+    cognitiveLevel: 'Vận dụng cao',
+    content: 'Phân tích ý nghĩa lịch sử của Chiến thắng Điện Biên Phủ (07/05/1954) đối với dân tộc Việt Nam và phong trào giải phóng dân tộc trên thế giới? Từ thắng lợi này, em rút ra được bài học lịch sử gì cho công cuộc xây dựng và bảo vệ Tổ quốc hiện nay?',
+    essayOutline: `DÀN Ý GỢI Ý TRẢ LỜI:
+1. Ý nghĩa đối với dân tộc Việt Nam (4.0 điểm):
+- Đập tan hoàn toàn kế hoạch quân sự Na-va và ý chí xâm lược của thực dân Pháp có đế quốc Mỹ giúp sức.
+- Buộc chính phủ Pháp phải ký kết Hiệp định Giơ-ne-vơ công nhận độc lập, chủ quyền, thống nhất và toàn vẹn lãnh thổ của ba nước Đông Dương.
+- Giải phóng hoàn toàn miền Bắc, tạo tiền đề vững chắc tiến lên xây dựng CNXH làm hậu phương lớn cho cách mạng miền Nam.
+2. Ý nghĩa quốc tế sâu sắc (3.0 điểm):
+- Được ghi vào lịch sử nhân loại như một "Bạch Đằng, Chi Lăng, Đống Đa" của thế kỷ XX, đập tan pháo đài bất khả xâm phạm của chủ nghĩa thực dân cũ.
+- Cổ vũ mạnh mẽ phong trào giải phóng dân tộc của các nước thuộc địa ở châu Á, châu Phi và khu vực Mỹ Latinh.
+3. Bài học lịch sử rút ra (3.0 điểm):
+- Bài học phát huy sức mạnh khối đại đoàn kết toàn dân tộc dưới sự lãnh đạo của Đảng.
+- Nghệ thuật quân sự "toàn dân đánh giặc", sáng tạo, dám đánh và biết thắng.
+- Kết hợp nội lực dân tộc với sự ủng hộ quốc tế trong thời kỳ hội nhập ngày nay.`,
+    rubricPoints: [
+      { criteria: 'Ý nghĩa đối với dân tộc: đập tan Na-va, Hiệp định Giơ-ne-vơ, giải phóng miền Bắc', points: 4.0 },
+      { criteria: 'Ý nghĩa quốc tế: đập tan chủ nghĩa thực dân cũ, cổ vũ phong trào thuộc địa', points: 3.0 },
+      { criteria: 'Bài học lịch sử: khối đại đoàn kết, nghệ thuật quân sự và liên hệ thực tế hội nhập', points: 3.0 },
+    ],
+    correctAnswer: 'Chiến thắng đập tan hoàn toàn kế hoạch Na-va, buộc Pháp ký Hiệp định Giơ-ne-vơ; cổ vũ phong trào thuộc địa toàn cầu; bài học về khối đại đoàn kết và nghệ thuật chiến tranh nhân dân.',
+    explanation: 'Yêu cầu học viên trình bày đủ 3 luận điểm: Ý nghĩa trong nước, ý nghĩa quốc tế và bài học liên hệ thực tiễn.',
+    source: 'Lịch sử Quân sự Việt Nam & Hướng dẫn ôn tập tốt nghiệp THPT GDTX',
+    author: 'Cao Thị Thu',
+    updatedAt: '2025-03-08',
+  },
+  {
+    id: 'q_12_essay',
     grade: 12,
     topic: 'Lịch sử địa phương Quảng Ninh',
-    lesson: 'Quảng Ninh trong sự nghiệp kháng chiến và xây dựng CNXH',
-    knowledgeDomain: 'Chiến thắng trận đầu ngày 5/8/1964',
+    lesson: 'Quảng Ninh trong sự nghiệp kháng chiến chống Mỹ cứu nước',
+    knowledgeDomain: 'Chiến thắng trận đầu ngày 2 và 5/8/1964',
     type: 'Tự luận',
     cognitiveLevel: 'Vận dụng',
     content: 'Nêu ý nghĩa lịch sử của Chiến thắng trận đầu ngày 2 và 5/8/1964 của quân và dân Quảng Ninh cùng Quân chủng Hải quân Việt Nam trong cuộc chiến đấu chống chiến tranh phá hoại của đế quốc Mỹ?',
-    correctAnswer: 'Bắn rơi nhiều máy bay hiện đại của Mỹ, bắt sống giặc lái Mỹ đầu tiên (E. Alvarez) tại Vịnh Hạ Long, khẳng định ý chí kiên cường của vùng mỏ.',
-    explanation: 'Khắc ghi truyền thống "Kỷ luật và Đồng tâm" của công nhân Vùng Mỏ và quân dân Quảng Ninh.',
+    essayOutline: `DÀN Ý GỢI Ý TRẢ LỜI:
+1. Hoàn cảnh và diễn biến: Đế quốc Mỹ dựng lên "Sự kiện Vịnh Bắc Bộ" ném bom phá hoại miền Bắc. Vùng mỏ Quảng Ninh kiên cường giáng trả (2.0 điểm).
+2. Thành tích đạt được: Bắn rơi nhiều máy bay hiện đại của Mỹ, bắt sống giặc lái Mỹ đầu tiên (E. Alvarez) tại Vịnh Hạ Long (3.0 điểm).
+3. Ý nghĩa lịch sử:
+- Đập tan ảo tưởng đánh nhanh thắng nhanh bằng không quân của giặc Mỹ (2.5 điểm).
+- Khắc sâu và phát huy truyền thống "Kỷ luật và Đồng tâm" của giai cấp công nhân Vùng mỏ và nhân dân các dân tộc Quảng Ninh (2.5 điểm).`,
+    rubricPoints: [
+      { criteria: 'Nêu đúng hoàn cảnh lịch sử và Sự kiện Vịnh Bắc Bộ', points: 2.0 },
+      { criteria: 'Thành tích bắn rơi máy bay và bắt sống giặc lái Mỹ E. Alvarez tại Hạ Long', points: 3.0 },
+      { criteria: 'Ý nghĩa quân sự và phát huy truyền thống "Kỷ luật và Đồng tâm" của Vùng mỏ', points: 5.0 },
+    ],
+    correctAnswer: 'Bắn rơi máy bay Mỹ, bắt sống giặc lái Mỹ đầu tiên E. Alvarez tại Vịnh Hạ Long, khẳng định ý chí kiên cường và truyền thống "Kỷ luật và Đồng tâm" của vùng mỏ Quảng Ninh.',
+    explanation: 'Khắc ghi truyền thống hào hùng "Kỷ luật và Đồng tâm" của thợ mỏ và quân dân Quảng Ninh.',
     source: 'Lịch sử Đảng bộ tỉnh Quảng Ninh',
     author: 'Cao Thị Thu',
-    updatedAt: '2025-03-01',
+    updatedAt: '2025-03-08',
   },
 ];
 

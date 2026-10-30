@@ -192,6 +192,20 @@ export function mapDbToSupport(row: any): StudentSupportItem {
 }
 
 export function mapQuestionToDb(q: Question) {
+  // Store structured details inside JSONB options if present
+  let optionsPayload: any = q.options || [];
+  if (q.trueFalseStatements || q.blankItems || q.matchingPairs || q.rubricPoints || q.essayOutline || q.wordBank) {
+    optionsPayload = {
+      options: q.options || [],
+      trueFalseStatements: q.trueFalseStatements,
+      blankItems: q.blankItems,
+      wordBank: q.wordBank,
+      matchingPairs: q.matchingPairs,
+      rubricPoints: q.rubricPoints,
+      essayOutline: q.essayOutline,
+    };
+  }
+
   return {
     id: q.id,
     grade: q.grade,
@@ -201,7 +215,7 @@ export function mapQuestionToDb(q: Question) {
     type: q.type,
     cognitive_level: q.cognitiveLevel,
     content: q.content,
-    options: q.options || [],
+    options: optionsPayload,
     correct_answer: q.correctAnswer,
     explanation: q.explanation,
     source: q.source,
@@ -211,6 +225,9 @@ export function mapQuestionToDb(q: Question) {
 }
 
 export function mapDbToQuestion(row: any): Question {
+  const isObjectOptions = row.options && !Array.isArray(row.options) && typeof row.options === 'object';
+  const optData = isObjectOptions ? row.options : {};
+
   return {
     id: row.id,
     grade: row.grade,
@@ -220,7 +237,13 @@ export function mapDbToQuestion(row: any): Question {
     type: row.type,
     cognitiveLevel: row.cognitive_level,
     content: row.content,
-    options: row.options || [],
+    options: Array.isArray(row.options) ? row.options : (optData.options || []),
+    trueFalseStatements: optData.trueFalseStatements,
+    blankItems: optData.blankItems,
+    wordBank: optData.wordBank,
+    matchingPairs: optData.matchingPairs,
+    rubricPoints: optData.rubricPoints,
+    essayOutline: optData.essayOutline,
     correctAnswer: row.correct_answer,
     explanation: row.explanation,
     source: row.source,

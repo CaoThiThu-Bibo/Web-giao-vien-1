@@ -44,6 +44,7 @@ import {
   deleteMaterialFromSupabase,
 } from '../lib/supabaseSync';
 import { testSupabaseConnection, isSupabaseConfigured } from '../lib/supabase';
+import { createStandardTT43Exams } from '../lib/tt43Evaluation';
 
 export interface SupabaseCloudStatus {
   connected: boolean;
@@ -81,6 +82,9 @@ interface AppContextType {
   deleteExam: (id: string) => void;
   updateStudentScore: (studentId: string, examId: string, score: number, reason?: string) => void;
   batchUpdateScores: (examId: string, scoreMap: Record<string, number>) => void;
+  updateStudentComment: (studentId: string, comment: string) => void;
+  batchUpdateComments: (commentMap: Record<string, string>) => void;
+  initTT43ExamsForClass: (classId: string, semester?: 'HK1' | 'HK2') => void;
 
   // Attendance
   attendanceRecords: AttendanceRecord[];
@@ -479,11 +483,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         grade: matchingClass.grade,
         academicYear: systemConfig.academicYear,
         status: row.status || 'Đang học',
+        phone: row.phone ? String(row.phone).trim() : undefined,
+        address: row.address ? String(row.address).trim() : undefined,
+        parentName: row.parentName ? String(row.parentName).trim() : undefined,
+        parentPhone: row.parentPhone ? String(row.parentPhone).trim() : undefined,
+        notes: row.notes ? String(row.notes).trim() : undefined,
         scores: {},
         averageScore: 0,
         rank: 'Trung bình',
         attendanceStats: { present: 0, late: 0, excused: 0, unexcused: 0 },
       };
+
 
       newArr.push(newStudent);
       newlyAdded.push(newStudent);
@@ -508,9 +518,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateClass = (id: string, updated: Partial<ClassRoom>) => {
     let targetUpdated: ClassRoom | null = null;
+    let oldCode = '';
     setClasses((prev) =>
       prev.map((c) => {
         if (c.id === id) {
+          oldCode = c.code;
           const merged = { ...c, ...updated };
           targetUpdated = merged;
           return merged;
@@ -520,13 +532,64 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
     if (targetUpdated) {
       syncClassToSupabase(targetUpdated);
+      // Synchronize students and exams if code or grade changed
+      if (updated.code || updated.grade !== undefined) {
+        const newCode = updated.code || oldCode;
+        setStudents((prev) =>
+          prev.map((s) => {
+            if (s.classId === id || s.className === oldCode) {
+              const updatedS = {
+                ...s,
+                classId: id,
+                className: newCode,
+                grade: updated.grade !== undefined ? updated.grade : s.grade,
+              };
+              syncStudentToSupabase(updatedS);
+              return updatedS;
+            }
+            return s;
+          })
+        );
+        setExams((prev) =>
+          prev.map((e) => {
+            if (e.classId === id || e.className === oldCode) {
+              const updatedE = {
+                ...e,
+                classId: id,
+                className: newCode,
+                grade: updated.grade !== undefined ? updated.grade : e.grade,
+              };
+              syncExamToSupabase(updatedE);
+              return updatedE;
+            }
+            return e;
+          })
+        );
+      }
     }
   };
 
   const deleteClass = (id: string) => {
+    let deletedCode = '';
+    const target = classes.find((c) => c.id === id);
+    if (target) deletedCode = target.code;
+
     setClasses((prev) => prev.filter((c) => c.id !== id));
     deleteClassFromSupabase(id);
+
+    // Unassign students from this class so they are not orphaned
+    setStudents((prev) =>
+      prev.map((s) => {
+        if (s.classId === id || (deletedCode && s.className === deletedCode)) {
+          const unassigned = { ...s, classId: '', className: 'Chưa xếp lớp' };
+          syncStudentToSupabase(unassigned);
+          return unassigned;
+        }
+        return s;
+      })
+    );
   };
+
 
   // Exam operations
   const addExam = (examData: Omit<Exam, 'id'>) => {
@@ -577,17 +640,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const scores = { ...s.scores, [examId]: score };
         const scoreVals = Object.values(scores).filter((v) => typeof v === 'number');
         const avg = Number((scoreVals.reduce((a, b) => a + b, 0) / scoreVals.length).toFixed(1));
-        let rank: 'Giỏi' | 'Khá' | 'Trung bình' | 'Yếu' = 'Trung bình';
-        if (avg >= 8.0) rank = 'Giỏi';
-        else if (avg >= 6.5) rank = 'Khá';
-        else if (avg >= 5.0) rank = 'Trung bình';
-        else rank = 'Yếu';
+        
+        // Mức theo Thông tư 43/2021/TT-BGDĐT: Tốt, Khá, Đạt, Chưa đạt
+        let level: 'Tốt' | 'Khá' | 'Đạt' | 'Chưa đạt' = 'Chưa đạt';
+        if (avg >= 8.0) level = 'Tốt';
+        else if (avg >= 6.5) level = 'Khá';
+        else if (avg >= 5.0) level = 'Đạt';
+        else level = 'Chưa đạt';
 
         const updatedStudent: Student = {
           ...s,
           scores,
           averageScore: avg,
-          rank,
+          rank: level,
+          evaluationLevel: level,
         };
         syncStudentToSupabase(updatedStudent);
         return updatedStudent;
@@ -603,22 +669,85 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const scores = { ...s.scores, [examId]: newScore };
         const scoreVals = Object.values(scores).filter((v) => typeof v === 'number');
         const avg = Number((scoreVals.reduce((a, b) => a + b, 0) / scoreVals.length).toFixed(1));
-        let rank: 'Giỏi' | 'Khá' | 'Trung bình' | 'Yếu' = 'Trung bình';
-        if (avg >= 8.0) rank = 'Giỏi';
-        else if (avg >= 6.5) rank = 'Khá';
-        else if (avg >= 5.0) rank = 'Trung bình';
-        else rank = 'Yếu';
+        
+        let level: 'Tốt' | 'Khá' | 'Đạt' | 'Chưa đạt' = 'Chưa đạt';
+        if (avg >= 8.0) level = 'Tốt';
+        else if (avg >= 6.5) level = 'Khá';
+        else if (avg >= 5.0) level = 'Đạt';
+        else level = 'Chưa đạt';
 
         const updatedStudent: Student = {
           ...s,
           scores,
           averageScore: avg,
-          rank,
+          rank: level,
+          evaluationLevel: level,
         };
         syncStudentToSupabase(updatedStudent);
         return updatedStudent;
       })
     );
+  };
+
+  const updateStudentComment = (studentId: string, comment: string) => {
+    setStudents((prev) =>
+      prev.map((s) => {
+        if (s.id !== studentId) return s;
+        const updatedStudent: Student = {
+          ...s,
+          teacherComment: comment,
+          notes: comment,
+        };
+        syncStudentToSupabase(updatedStudent);
+        return updatedStudent;
+      })
+    );
+  };
+
+  const batchUpdateComments = (commentMap: Record<string, string>) => {
+    setStudents((prev) =>
+      prev.map((s) => {
+        if (!commentMap[s.id]) return s;
+        const updatedStudent: Student = {
+          ...s,
+          teacherComment: commentMap[s.id],
+          notes: commentMap[s.id],
+        };
+        syncStudentToSupabase(updatedStudent);
+        return updatedStudent;
+      })
+    );
+  };
+
+  const initTT43ExamsForClass = (classId: string, semester: 'HK1' | 'HK2' = 'HK2') => {
+    const targetClass = classes.find((c) => c.id === classId);
+    if (!targetClass) return;
+
+    const existingExams = exams.filter((e) => e.classId === classId);
+    const standardTemplates = createStandardTT43Exams(
+      classId,
+      targetClass.code,
+      targetClass.grade,
+      semester
+    );
+
+    const newExamsToAdd: Exam[] = [];
+    standardTemplates.forEach((tpl) => {
+      const alreadyHas = existingExams.some(
+        (e) => e.tt43Category === tpl.tt43Category && (e.semester === semester || !e.semester)
+      );
+      if (!alreadyHas) {
+        newExamsToAdd.push({
+          ...tpl,
+          id: `ex_tt43_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        });
+      }
+    });
+
+    if (newExamsToAdd.length > 0) {
+      setExams((prev) => [...newExamsToAdd, ...prev]);
+      newExamsToAdd.forEach(syncExamToSupabase);
+    }
   };
 
   // Attendance
@@ -895,6 +1024,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteExam,
         updateStudentScore,
         batchUpdateScores,
+        updateStudentComment,
+        batchUpdateComments,
+        initTT43ExamsForClass,
         attendanceRecords,
         markAttendance,
         batchMarkAttendance,

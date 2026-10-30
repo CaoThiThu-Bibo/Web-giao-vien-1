@@ -13,6 +13,7 @@ export type ActiveTab =
   | 'settings';
 
 export type UserRole = 'teacher' | 'student' | 'admin';
+export type EvaluationLevel = 'Tốt' | 'Khá' | 'Đạt' | 'Chưa đạt';
 
 export interface Student {
   id: string;
@@ -32,7 +33,19 @@ export interface Student {
   notes?: string;
   scores: Record<string, number>; // examId -> score
   averageScore?: number;
-  rank?: 'Giỏi' | 'Khá' | 'Trung bình' | 'Yếu';
+  rank?: 'Tốt' | 'Khá' | 'Đạt' | 'Chưa đạt' | 'Giỏi' | 'Trung bình' | 'Yếu';
+  evaluationLevel?: EvaluationLevel;
+  teacherComment?: string;
+  semesterScores?: {
+    hk1Avg?: number;
+    hk1Level?: EvaluationLevel;
+    hk1Comment?: string;
+    hk2Avg?: number;
+    hk2Level?: EvaluationLevel;
+    hk2Comment?: string;
+    yearAvg?: number;
+    yearLevel?: EvaluationLevel;
+  };
   attendanceStats: {
     present: number;
     late: number;
@@ -74,6 +87,8 @@ export interface Exam {
   format: ExamFormat;
   maxScore: number;
   weight: number; // hệ số: 1, 2, 3
+  tt43Category?: 'TX1' | 'TX2' | 'TX3' | 'GK' | 'CK' | 'OTHER';
+  semester?: 'HK1' | 'HK2';
   description?: string;
   averageScore?: number;
 }
@@ -131,16 +146,66 @@ export interface SystemNotification {
   read: boolean;
 }
 
+export type QuestionType =
+  | 'Trắc nghiệm đơn'
+  | 'Trắc nghiệm đúng sai'
+  | 'Điền từ'
+  | 'Nối từ'
+  | 'Tự luận'
+  | 'Trắc nghiệm'; // Backward compatibility
+
+export interface TrueFalseStatement {
+  id: 'a' | 'b' | 'c' | 'd';
+  statement: string;
+  isCorrect: boolean; // true = Đúng, false = Sai
+  explanation?: string;
+}
+
+export interface FillBlankItem {
+  id: number;
+  blankLabel: string; // e.g. "[1]"
+  correctWord: string;
+}
+
+export interface MatchingPair {
+  id: string; // "1", "2", "3", "4"
+  left: string; // Cột A: Nhân vật / Sự kiện / Niên đại
+  right: string; // Cột B: Ý nghĩa / Địa danh / Tác phẩm
+  matchedKey?: string; // Khóa ghép đúng (ví dụ "A", "B", "C", "D")
+}
+
+export interface RubricCriteria {
+  criteria: string;
+  points: number;
+}
+
 export interface Question {
   id: string;
   grade: 10 | 11 | 12;
   topic: string;
   lesson: string;
   knowledgeDomain: string;
-  type: 'Trắc nghiệm' | 'Tự luận';
+  type: QuestionType;
   cognitiveLevel: 'Nhận biết' | 'Thông hiểu' | 'Vận dụng' | 'Vận dụng cao';
   content: string;
-  options?: string[]; // for multiple choice [A, B, C, D]
+  
+  // Trắc nghiệm chỉ chọn 1 đáp án:
+  options?: string[]; // [A, B, C, D]
+  
+  // Trắc nghiệm đúng sai:
+  trueFalseStatements?: TrueFalseStatement[];
+  
+  // Bài tập điền từ:
+  blankItems?: FillBlankItem[];
+  wordBank?: string[];
+  
+  // Bài tập nối từ:
+  matchingPairs?: MatchingPair[];
+  
+  // Tự luận:
+  essayOutline?: string;
+  rubricPoints?: RubricCriteria[];
+
   correctAnswer: string;
   explanation: string;
   source: string;
