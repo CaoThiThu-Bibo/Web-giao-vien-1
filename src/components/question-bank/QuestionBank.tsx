@@ -2,6 +2,11 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Question, QuestionType, TrueFalseStatement, FillBlankItem, MatchingPair, RubricCriteria } from '../../types';
 import { Modal } from '../common/Modal';
+import { WordImportModal } from './WordImportModal';
+import { downloadWordTemplate, parseQuestionsFromText } from '../../lib/wordQuestionParser';
+import { GraduationExamModal } from './GraduationExamModal';
+import { standardGraduationExamQuestions } from '../../data/graduationExamData';
+import { normalizeExamQuestionsTo10 } from '../../lib/examScoring';
 import {
   FileQuestion,
   Plus,
@@ -25,6 +30,11 @@ import {
   ToggleRight,
   BookMarked,
   Info,
+  Download,
+  Upload,
+  Award,
+  GraduationCap,
+  Calculator,
 } from 'lucide-react';
 
 export const QuestionBank: React.FC = () => {
@@ -38,9 +48,16 @@ export const QuestionBank: React.FC = () => {
   // Modals
   const [isAddEditModalOpen, setIsAddEditModalOpen] = useState(false);
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
+  const [isWordImportModalOpen, setIsWordImportModalOpen] = useState(false);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const [previewQuestion, setPreviewQuestion] = useState<Question | null>(null);
   const [isBuildExamModalOpen, setIsBuildExamModalOpen] = useState(false);
+  const [isGraduationExamModalOpen, setIsGraduationExamModalOpen] = useState(false);
+  const [isAutoScore10, setIsAutoScore10] = useState(true);
+
+  // Quick single-question paste inside Add modal
+  const [isQuickPasteOneOpen, setIsQuickPasteOneOpen] = useState(false);
+  const [quickPasteOneText, setQuickPasteOneText] = useState('');
 
   // Selected questions for custom exam generation
   const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[]>([]);
@@ -278,9 +295,46 @@ export const QuestionBank: React.FC = () => {
     setIsAddEditModalOpen(true);
   };
 
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  // Quick parse 1 question from pasted text
+  const handleQuickParseOne = () => {
+    if (!quickPasteOneText.trim()) return;
+    const parsed = parseQuestionsFromText(quickPasteOneText, formGrade, formTopic, formLesson, formAuthor);
+    if (parsed.questions.length > 0) {
+      const firstQ = parsed.questions[0];
+      setFormType(firstQ.type);
+      setFormContent(firstQ.content);
+      if (firstQ.type === 'Trắc nghiệm đơn' && firstQ.options) {
+        setSingleOptions({
+          A: firstQ.options[0]?.replace(/^[A-D]\.\s*/, '') || '',
+          B: firstQ.options[1]?.replace(/^[A-D]\.\s*/, '') || '',
+          C: firstQ.options[2]?.replace(/^[A-D]\.\s*/, '') || '',
+          D: firstQ.options[3]?.replace(/^[A-D]\.\s*/, '') || '',
+        });
+        setSingleCorrectAnswer((firstQ.correctAnswer as any) || 'A');
+      } else if (firstQ.type === 'Trắc nghiệm đúng sai' && firstQ.trueFalseStatements) {
+        setTfStatements(firstQ.trueFalseStatements);
+      }
+      if (firstQ.explanation) {
+        setFormExplanation(firstQ.explanation);
+      }
+      setIsQuickPasteOneOpen(false);
+      setQuickPasteOneText('');
+      showToast('Đã tự động nhận diện và điền nội dung câu hỏi thành công!');
+    } else {
+      alert('Chưa nhận diện được cấu trúc câu hỏi. Hãy kiểm tra lại theo định dạng: Câu 1, các phương án A, B, C, D và Đáp án.');
+    }
+  };
+
   // Save Add/Edit Question
-  const handleSaveQuestion = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSaveQuestion = (e?: React.FormEvent, keepOpenAndResetNext: boolean = false) => {
+    if (e) e.preventDefault();
     if (!formContent.trim()) return;
 
     let computedCorrectAnswer = '';
@@ -352,7 +406,24 @@ export const QuestionBank: React.FC = () => {
       addQuestion(payload);
     }
 
-    setIsAddEditModalOpen(false);
+    if (keepOpenAndResetNext) {
+      // Keep modal open, reset fields for next question while keeping metadata
+      setEditingQuestionId(null);
+      setFormContent('');
+      setSingleOptions({ A: '', B: '', C: '', D: '' });
+      setSingleCorrectAnswer('A');
+      setTfStatements([
+        { id: 'a', statement: '', isCorrect: true, explanation: '' },
+        { id: 'b', statement: '', isCorrect: true, explanation: '' },
+        { id: 'c', statement: '', isCorrect: false, explanation: '' },
+        { id: 'd', statement: '', isCorrect: true, explanation: '' },
+      ]);
+      setQuickPasteOneText('');
+      showToast('Đã lưu câu hỏi thành công! Mời cô nhập tiếp câu tiếp theo.');
+    } else {
+      setIsAddEditModalOpen(false);
+      showToast('Đã lưu câu hỏi vào ngân hàng đề thành công!');
+    }
   };
 
   const toggleSelectQuestion = (id: string) => {
@@ -390,6 +461,11 @@ export const QuestionBank: React.FC = () => {
     return { part1, part2, part3, part4 };
   }, [selectedQuestions]);
 
+  // Auto calculate and normalize scores to 10.0 points for selected questions
+  const autoScores = useMemo(() => {
+    return normalizeExamQuestionsTo10(selectedQuestions);
+  }, [selectedQuestions]);
+
   // Quick helper for inserting blank placeholder into Content
   const handleInsertBlank = () => {
     const nextIndex = blankItems.length + 1;
@@ -420,6 +496,36 @@ export const QuestionBank: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
+          {/* Download Word Template */}
+          <button
+            onClick={downloadWordTemplate}
+            className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-[#073B66] rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-2xs border border-slate-200 cursor-pointer transition-colors"
+            title="Tải file Word mẫu định dạng chuẩn Bộ GD&ĐT"
+          >
+            <Download className="w-4 h-4 text-[#0878C9]" />
+            Tải file Word mẫu (.doc)
+          </button>
+
+          {/* Upload / Batch Import Word */}
+          <button
+            onClick={() => setIsWordImportModalOpen(true)}
+            className="px-3.5 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+            title="Tải lên file Word (.docx) hoặc dán hàng loạt câu hỏi"
+          >
+            <Upload className="w-4 h-4" />
+            Tải lên từ Word / Dán nhanh
+          </button>
+
+          {/* MOET 2025 Grade 12 Graduation Exam Structure & Auto-Grading */}
+          <button
+            onClick={() => setIsGraduationExamModalOpen(true)}
+            className="px-3.5 py-2 bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 hover:from-amber-600 hover:to-amber-800 text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer border border-amber-400"
+            title="Cấu trúc đề ôn thi tốt nghiệp THPT Lớp 12 môn Lịch sử chuẩn Bộ GD&ĐT 2025 và phòng chấm điểm tự động thang 10"
+          >
+            <Award className="w-4 h-4 text-amber-200" />
+            Đề Tốt nghiệp THPT 2025 (Thang 10)
+          </button>
+
           {selectedQuestionIds.length > 0 && (
             <button
               onClick={() => setIsBuildExamModalOpen(true)}
@@ -439,6 +545,14 @@ export const QuestionBank: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Floating Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-5 right-5 z-50 bg-[#073B66] text-white px-4 py-3 rounded-2xl shadow-xl border border-sky-400 flex items-center gap-2.5 text-xs font-bold animate-in slide-in-from-bottom-3 duration-200">
+          <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
 
       {/* Type Statistics Pills */}
       <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 no-print">
@@ -1061,6 +1175,52 @@ export const QuestionBank: React.FC = () => {
             </div>
           </div>
 
+          {/* Quick Paste 1-Question Assistant */}
+          <div className="p-3 bg-gradient-to-r from-indigo-50/70 to-purple-50/70 border border-indigo-200 rounded-xl space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-indigo-950 flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-indigo-600" />
+                Dán nhanh 1 câu từ Word (Tự động nhận diện nội dung & đáp án)
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsQuickPasteOneOpen(!isQuickPasteOneOpen)}
+                className="px-2.5 py-1 bg-white hover:bg-indigo-100 text-indigo-800 border border-indigo-300 rounded-lg font-bold text-xs cursor-pointer transition-colors shadow-2xs"
+              >
+                {isQuickPasteOneOpen ? 'Thu gọn' : 'Mở khung dán'}
+              </button>
+            </div>
+
+            {isQuickPasteOneOpen && (
+              <div className="space-y-2 pt-1 animate-in fade-in duration-150">
+                <textarea
+                  rows={4}
+                  value={quickPasteOneText}
+                  onChange={(e) => setQuickPasteOneText(e.target.value)}
+                  placeholder={`Dán nguyên văn câu hỏi vào đây (bao gồm câu hỏi, A, B, C, D hoặc a, b, c, d và Đáp án):
+Ví dụ:
+Câu 1: Hiện thực lịch sử là gì?
+A. Tất cả những gì đã diễn ra trong quá khứ...
+B. Những câu chuyện truyền thuyết...
+C. Toàn bộ nhận thức chủ quan...
+D. Những dự đoán của con người...
+Đáp án: A`}
+                  className="w-full p-2.5 bg-white border border-indigo-200 rounded-lg outline-none text-xs font-serif leading-relaxed"
+                />
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={handleQuickParseOne}
+                    className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Tự động nhận diện & Điền vào form
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Question Prompt / Stimulus */}
           <div>
             <div className="flex items-center justify-between mb-1">
@@ -1102,19 +1262,27 @@ export const QuestionBank: React.FC = () => {
           {/* 1. Trắc nghiệm đơn */}
           {formType === 'Trắc nghiệm đơn' && (
             <div className="space-y-3 p-3.5 bg-blue-50/40 rounded-xl border border-blue-200">
-              <label className="block text-slate-700 font-bold">4 Phương án lựa chọn:</label>
+              <div className="flex items-center justify-between">
+                <label className="block text-slate-700 font-bold">4 Phương án lựa chọn:</label>
+                <span className="text-[11px] text-blue-700 italic">
+                  (Mẹo: Bấm trực tiếp vào chữ cái A, B, C, D để chọn làm đáp án đúng)
+                </span>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {(['A', 'B', 'C', 'D'] as const).map((letter) => (
                   <div key={letter} className="flex items-center gap-2">
-                    <span
-                      className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
+                    <button
+                      type="button"
+                      onClick={() => setSingleCorrectAnswer(letter)}
+                      title={`Bấm để chọn ${letter} làm đáp án đúng`}
+                      className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs shrink-0 cursor-pointer transition-all hover:scale-105 ${
                         singleCorrectAnswer === letter
-                          ? 'bg-emerald-600 text-white'
-                          : 'bg-slate-200 text-slate-700'
+                          ? 'bg-emerald-600 text-white shadow-xs ring-2 ring-emerald-300'
+                          : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
                       }`}
                     >
                       {letter}
-                    </span>
+                    </button>
                     <input
                       type="text"
                       required
@@ -1490,7 +1658,7 @@ export const QuestionBank: React.FC = () => {
             />
           </div>
 
-          <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-200">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-3 border-t border-slate-200">
             <button
               type="button"
               onClick={() => setIsAddEditModalOpen(false)}
@@ -1498,12 +1666,26 @@ export const QuestionBank: React.FC = () => {
             >
               Hủy bỏ
             </button>
-            <button
-              type="submit"
-              className="px-5 py-2 bg-[#0878C9] hover:bg-[#073B66] text-white rounded-xl font-bold cursor-pointer transition-colors shadow-xs"
-            >
-              {editingQuestionId ? 'Cập nhật câu hỏi' : 'Lưu vào ngân hàng đề'}
-            </button>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {!editingQuestionId && (
+                <button
+                  type="button"
+                  onClick={() => handleSaveQuestion(undefined, true)}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold cursor-pointer transition-colors shadow-xs flex items-center gap-1.5"
+                  title="Lưu câu này và giữ nguyên biểu mẫu để soạn tiếp câu tiếp theo"
+                >
+                  <Plus className="w-4 h-4" />
+                  Lưu & Thêm câu tiếp theo
+                </button>
+              )}
+              <button
+                type="submit"
+                className="px-5 py-2 bg-[#0878C9] hover:bg-[#073B66] text-white rounded-xl font-bold cursor-pointer transition-colors shadow-xs"
+              >
+                {editingQuestionId ? 'Cập nhật câu hỏi' : 'Lưu & Đóng'}
+              </button>
+            </div>
           </div>
         </form>
       </Modal>
@@ -1527,7 +1709,25 @@ export const QuestionBank: React.FC = () => {
               />
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* 10-Point Automatic Calculation Toggle */}
+              <button
+                type="button"
+                onClick={() => setIsAutoScore10(!isAutoScore10)}
+                className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
+                  isAutoScore10
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                    : 'bg-slate-50 border-slate-200 text-slate-500'
+                }`}
+                title="Tự động tính toán điểm từng câu để tổng điểm toàn bài luôn đạt 10,0 điểm"
+              >
+                <Calculator className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Tự động tính thang 10,0đ</span>
+                <span className="bg-emerald-600 text-white text-[10px] px-1.5 py-0.2 rounded font-extrabold">
+                  {isAutoScore10 ? 'BẬT' : 'TẮT'}
+                </span>
+              </button>
+
               <button
                 onClick={handlePrintExam}
                 className="px-4 py-2 bg-[#073B66] hover:bg-[#0878C9] text-white rounded-xl font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
@@ -1567,6 +1767,11 @@ export const QuestionBank: React.FC = () => {
             <div className="p-3 bg-white rounded-xl border border-slate-200 flex flex-wrap items-center justify-between text-xs font-serif">
               <span>Họ và tên học viên: ............................................................................</span>
               <span>Lớp: ......................... Mã đề: 101</span>
+              {isAutoScore10 && (
+                <span className="text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-sans text-[11px]">
+                  Tổng điểm toàn bài: 10,0 điểm
+                </span>
+              )}
             </div>
 
             {/* EXAM PARTS */}
@@ -1574,13 +1779,20 @@ export const QuestionBank: React.FC = () => {
               {/* PHẦN I: TRẮC NGHIỆM ĐƠN */}
               {groupedExamQuestions.part1.length > 0 && (
                 <div className="space-y-3">
-                  <div className="font-bold text-[#073B66] uppercase text-xs pb-1 border-b border-slate-200 flex items-center gap-2">
-                    <span className="bg-[#073B66] text-white px-2 py-0.5 rounded text-[10px]">
-                      PHẦN I
-                    </span>
-                    <span>
-                      CÂU TRẮC NGHIỆM NHIỀU PHƯƠNG ÁN LỰA CHỌN ({groupedExamQuestions.part1.length} câu)
-                    </span>
+                  <div className="font-bold text-[#073B66] uppercase text-xs pb-1 border-b border-slate-200 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="bg-[#073B66] text-white px-2 py-0.5 rounded text-[10px]">
+                        PHẦN I
+                      </span>
+                      <span>
+                        CÂU TRẮC NGHIỆM NHIỀU PHƯƠNG ÁN LỰA CHỌN ({groupedExamQuestions.part1.length} câu)
+                      </span>
+                    </div>
+                    {isAutoScore10 && (
+                      <span className="text-emerald-700 font-bold font-sans text-[11px]">
+                        Tổng: {(groupedExamQuestions.part1.reduce((sum, q) => sum + (autoScores.questionPoints[q.id] || 0), 0)).toFixed(2)} điểm
+                      </span>
+                    )}
                   </div>
                   <p className="text-[11px] text-slate-500 italic">
                     Thí sinh trả lời từ câu 1 đến câu {groupedExamQuestions.part1.length}. Mỗi câu hỏi thí sinh chỉ chọn một phương án.
@@ -1591,6 +1803,11 @@ export const QuestionBank: React.FC = () => {
                       <div key={q.id} className="space-y-1.5 font-serif">
                         <div className="font-bold text-slate-900">
                           Câu {qIdx + 1}: {q.content}
+                          {isAutoScore10 && (
+                            <span className="text-emerald-700 font-sans font-bold text-[11px] ml-1.5">
+                              ({autoScores.questionPoints[q.id]?.toFixed(2)} điểm)
+                            </span>
+                          )}
                         </div>
                         {q.options && (
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pl-3 text-slate-700 text-xs">
@@ -1608,13 +1825,20 @@ export const QuestionBank: React.FC = () => {
               {/* PHẦN II: TRẮC NGHIỆM ĐÚNG SAI */}
               {groupedExamQuestions.part2.length > 0 && (
                 <div className="space-y-3">
-                  <div className="font-bold text-purple-900 uppercase text-xs pb-1 border-b border-slate-200 flex items-center gap-2">
-                    <span className="bg-purple-700 text-white px-2 py-0.5 rounded text-[10px]">
-                      PHẦN II
-                    </span>
-                    <span>
-                      CÂU TRẮC NGHIỆM ĐÚNG SAI ({groupedExamQuestions.part2.length} câu - Chuẩn format 2025)
-                    </span>
+                  <div className="font-bold text-purple-900 uppercase text-xs pb-1 border-b border-slate-200 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="bg-purple-700 text-white px-2 py-0.5 rounded text-[10px]">
+                        PHẦN II
+                      </span>
+                      <span>
+                        CÂU TRẮC NGHIỆM ĐÚNG SAI ({groupedExamQuestions.part2.length} câu - Chuẩn format 2025)
+                      </span>
+                    </div>
+                    {isAutoScore10 && (
+                      <span className="text-purple-700 font-bold font-sans text-[11px]">
+                        Tổng: {(groupedExamQuestions.part2.reduce((sum, q) => sum + (autoScores.questionPoints[q.id] || 0), 0)).toFixed(2)} điểm
+                      </span>
+                    )}
                   </div>
                   <p className="text-[11px] text-slate-500 italic">
                     Thí sinh trả lời từng câu. Trong mỗi ý a), b), c), d) ở mỗi câu, thí sinh chọn Đúng hoặc Sai.
@@ -1625,6 +1849,11 @@ export const QuestionBank: React.FC = () => {
                       <div key={q.id} className="space-y-2 font-serif">
                         <div className="font-bold text-slate-900 leading-relaxed whitespace-pre-line">
                           Câu {qIdx + 1}: {q.content}
+                          {isAutoScore10 && (
+                            <span className="text-purple-700 font-sans font-bold text-[11px] ml-1.5">
+                              ({autoScores.questionPoints[q.id]?.toFixed(2)} điểm)
+                            </span>
+                          )}
                         </div>
                         <div className="pl-3 space-y-1.5">
                           {q.trueFalseStatements?.map((stmt) => (
@@ -1656,11 +1885,18 @@ export const QuestionBank: React.FC = () => {
               {/* PHẦN III: ĐIỀN TỪ & NỐI TỪ */}
               {groupedExamQuestions.part3.length > 0 && (
                 <div className="space-y-3">
-                  <div className="font-bold text-amber-900 uppercase text-xs pb-1 border-b border-slate-200 flex items-center gap-2">
-                    <span className="bg-amber-700 text-white px-2 py-0.5 rounded text-[10px]">
-                      PHẦN III
-                    </span>
-                    <span>BÀI TẬP ĐIỀN TỪ VÀ NỐI TỪ / GHÉP ĐÔI</span>
+                  <div className="font-bold text-amber-900 uppercase text-xs pb-1 border-b border-slate-200 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="bg-amber-700 text-white px-2 py-0.5 rounded text-[10px]">
+                        PHẦN III
+                      </span>
+                      <span>BÀI TẬP ĐIỀN TỪ VÀ NỐI TỪ / GHÉP ĐÔI</span>
+                    </div>
+                    {isAutoScore10 && (
+                      <span className="text-amber-700 font-bold font-sans text-[11px]">
+                        Tổng: {(groupedExamQuestions.part3.reduce((sum, q) => sum + (autoScores.questionPoints[q.id] || 0), 0)).toFixed(2)} điểm
+                      </span>
+                    )}
                   </div>
 
                   <div className="space-y-4 pl-2">
@@ -1668,6 +1904,11 @@ export const QuestionBank: React.FC = () => {
                       <div key={q.id} className="space-y-2 font-serif">
                         <div className="font-bold text-slate-900">
                           Câu {qIdx + 1} ({q.type}): {q.content}
+                          {isAutoScore10 && (
+                            <span className="text-amber-700 font-sans font-bold text-[11px] ml-1.5">
+                              ({autoScores.questionPoints[q.id]?.toFixed(2)} điểm)
+                            </span>
+                          )}
                         </div>
 
                         {/* If Blank */}
@@ -1714,11 +1955,18 @@ export const QuestionBank: React.FC = () => {
               {/* PHẦN IV: TỰ LUẬN */}
               {groupedExamQuestions.part4.length > 0 && (
                 <div className="space-y-3">
-                  <div className="font-bold text-rose-900 uppercase text-xs pb-1 border-b border-slate-200 flex items-center gap-2">
-                    <span className="bg-rose-700 text-white px-2 py-0.5 rounded text-[10px]">
-                      PHẦN IV
-                    </span>
-                    <span>CÂU HỎI TỰ LUẬN ({groupedExamQuestions.part4.length} câu)</span>
+                  <div className="font-bold text-rose-900 uppercase text-xs pb-1 border-b border-slate-200 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="bg-rose-700 text-white px-2 py-0.5 rounded text-[10px]">
+                        PHẦN IV
+                      </span>
+                      <span>CÂU HỎI TỰ LUẬN ({groupedExamQuestions.part4.length} câu)</span>
+                    </div>
+                    {isAutoScore10 && (
+                      <span className="text-rose-700 font-bold font-sans text-[11px]">
+                        Tổng: {(groupedExamQuestions.part4.reduce((sum, q) => sum + (autoScores.questionPoints[q.id] || 0), 0)).toFixed(2)} điểm
+                      </span>
+                    )}
                   </div>
 
                   <div className="space-y-4 pl-2 font-serif">
@@ -1726,6 +1974,11 @@ export const QuestionBank: React.FC = () => {
                       <div key={q.id} className="space-y-2">
                         <div className="font-bold text-slate-900">
                           Câu {qIdx + 1}: {q.content}
+                          {isAutoScore10 && (
+                            <span className="text-rose-700 font-sans font-bold text-[11px] ml-1.5">
+                              ({autoScores.questionPoints[q.id]?.toFixed(2)} điểm)
+                            </span>
+                          )}
                         </div>
                         <div className="h-28 border border-dashed border-slate-300 rounded-lg bg-white p-2 text-slate-400 italic text-[11px]">
                           (Học viên viết bài làm tự luận vào khoảng trống dưới đây...)
@@ -1753,7 +2006,7 @@ export const QuestionBank: React.FC = () => {
                   <div key={q.id} className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-[#073B66]">
-                        Câu {idx + 1} ({q.type}):
+                        Câu {idx + 1} ({q.type}) {isAutoScore10 ? `- ${autoScores.questionPoints[q.id]?.toFixed(2)} điểm` : ''}:
                       </span>
                       <span className="font-extrabold text-emerald-700">{q.correctAnswer}</span>
                     </div>
@@ -1776,6 +2029,32 @@ export const QuestionBank: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      {/* Modal: Word Batch Import */}
+      <WordImportModal
+        isOpen={isWordImportModalOpen}
+        onClose={() => setIsWordImportModalOpen(false)}
+        onImportQuestions={(newQuestions) => {
+          newQuestions.forEach((q) => addQuestion(q));
+          showToast(`Đã nhập thành công ${newQuestions.length} câu hỏi từ Word vào ngân hàng đề!`);
+        }}
+      />
+
+      {/* Modal: MOET 2025 Grade 12 Graduation Exam Structure & Live Auto-Scorer */}
+      <GraduationExamModal
+        isOpen={isGraduationExamModalOpen}
+        onClose={() => setIsGraduationExamModalOpen(false)}
+        onImportToBank={() => {
+          let added = 0;
+          standardGraduationExamQuestions.forEach((sq) => {
+            if (!questions.some((q) => q.id === sq.id)) {
+              addQuestion(sq);
+              added++;
+            }
+          });
+          showToast(`Đã lưu thành công ${added} câu hỏi Đề ôn thi tốt nghiệp 2025 vào Ngân hàng câu hỏi!`);
+        }}
+      />
     </div>
   );
 };
