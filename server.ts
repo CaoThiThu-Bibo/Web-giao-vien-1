@@ -4,7 +4,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Type } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
@@ -621,46 +621,121 @@ Yêu cầu: Viết tiếng Việt chuẩn xác về mốc thời gian, nhân v�
   }
 });
 
-// API: Exam Matrix & Questions Generator
-app.post('/api/gemini/generate-exam', async (req, res) => {
-  const { grade, topic, examType, duration, numMC, numEssay, difficultyDistribution } = req.body;
+// API: Graduation Exam Generator (Chuẩn Bộ GD&ĐT 2025 - Quyết định 764/QĐ-BGDĐT)
+app.post('/api/gemini/generate-graduation-exam', async (req, res) => {
+  const {
+    topic = 'Lịch sử Việt Nam thế kỷ XX và Thế giới hiện đại',
+    sourceText = '',
+    grade = 12,
+    numPart1 = 24,
+    numPart2 = 4,
+    examTitle = 'Đề luyện thi tốt nghiệp THPT 2025 môn Lịch sử',
+    notes = '',
+  } = req.body;
 
   const prompt = `
-Bạn là chuyên gia khảo thí và đánh giá môn Lịch sử THPT/GDTX.
-Hãy xây dựng MA TRẬN, BẢN ĐẶC TẢ VÀ ĐỀ KIỂM TRA MÔN LỊCH SỬ:
-- Khối lớp: Lớp ${grade || 10}
-- Chủ đề kiểm tra: ${topic || 'Lịch sử Việt Nam'}
-- Hình thức: ${examType || 'Kết hợp Trắc nghiệm và Tự luận'}
-- Thời gian làm bài: ${duration || '45 phút'}
-- Số câu trắc nghiệm: ${numMC || 12} câu
-- Số câu tự luận: ${numEssay || 2} câu
-- Tỉ lệ nhận thức: ${difficultyDistribution || '40% Nhận biết, 30% Thông hiểu, 20% Vận dụng, 10% Vận dụng cao'}
+Bạn là chuyên gia thẩm định và biên soạn đề thi tốt nghiệp THPT môn Lịch sử theo chương trình GDPT 2018 và Quyết định 764/QĐ-BGDĐT của Bộ Giáo dục và Đào tạo Việt Nam.
+Hãy biên soạn một ĐỀ LUYỆN THI TỐT NGHIỆP THPT MÔN LỊCH SỬ CHUẨN 2025:
+- Khối lớp: Lớp ${grade} (Chương trình GDTX cấp THPT)
+- Chủ đề trọng tâm: ${topic}
+- Tiêu đề đề thi: ${examTitle}
+${sourceText ? `- TƯ LIỆU / DỮ LIỆU CÔ GIÁO CAO THỊ THU CUNG CẤP ĐỂ TỰ SOẠN ĐỀ:\n"""\n${sourceText}\n"""\n(BẮT BUỘC: Hãy khai thác triệt để các dữ kiện, niên đại, sự kiện và trích đoạn trong tư liệu trên để xây dựng câu hỏi!)` : ''}
+${notes ? `- Yêu cầu bổ sung của giáo viên: ${notes}` : ''}
 
-Nội dung xuất ra gồm 3 phần:
-Phần I: MA TRẬN VÀ BẢN ĐẶC TẢ ĐỀ KIỂM TRA (Bảng phân bổ câu hỏi theo 4 mức độ nhận thức)
-Phần II: ĐỀ BÀI KIỂM TRA
-- A. PHẦN TRẮC NGHIỆM KHÁCH QUAN (${numMC || 12} câu, 4 lựa chọn A, B, C, D rõ ràng)
-- B. PHẦN TỰ LUẬN (${numEssay || 2} câu hỏi phát triển năng lực tư duy lịch sử, khai thác tư liệu)
-Phần III: ĐÁP ÁN, HƯỚNG DẪN CHẤM VÀ THANG ĐIỂM CHI TIẾT
-- Bảng đáp án trắc nghiệm kèm giải thích ngắn
-- Biểu điểm tự luận chi tiết từng ý (chuẩn xác mốc thời gian, ý nghĩa lịch sử).
+CẤU TRÚC ĐỀ THI BẮT BUỘC THEO QUY ĐỊNH CHÍNH THỨC CỦA BỘ GD&ĐT:
+1. PHẦN I: ${numPart1} CÂU HỎI TRẮC NGHIỆM NHIỀU PHƯƠNG ÁN LỰA CHỌN (4 chọn 1)
+- Mỗi câu gồm: Lời dẫn rõ ràng, 4 phương án A, B, C, D (trong đó chỉ 1 phương án đúng), đáp án đúng (A/B/C/D), mức độ nhận thức (Nhận biết, Thông hiểu, Vận dụng) và giải thích ngắn gọn.
+- Điểm: Mỗi câu đúng 0,25 điểm (tổng 6,0 điểm nếu 24 câu).
+
+2. PHẦN II: ${numPart2} CÂU HỎI TRẮC NGHIỆM ĐÚNG SAI DỰA TRÊN TƯ LIỆU LỊCH SỬ
+- Mỗi câu gồm:
+  + Đoạn trích tư liệu lịch sử (văn kiện, chỉ thị, nhận định của lãnh tụ/nhà sử học hoặc số liệu lịch sử) dài 3 - 6 dòng làm chất liệu.
+  + 4 nhận định a, b, c, d xoay quanh tư liệu đó.
+  + Mỗi nhận định xác định rõ là ĐÚNG hay SAI (true/false) và giải thích vì sao.
+  + Đảm bảo có cả ý Đúng và ý Sai để kiểm tra tư duy phản biện lịch sử của học sinh.
+- Điểm: Tính theo barem bậc thang chính thức của Bộ: 1 ý đúng = 0,10đ; 2 ý đúng = 0,25đ; 3 ý đúng = 0,50đ; 4 ý đúng = 1,00đ (tổng 4,0 điểm).
+
+Hãy trả về định dạng JSON hợp lệ tuân thủ đúng cấu trúc.
 `;
 
   try {
     if (!ai) {
       throw new Error('Chưa cấu hình GEMINI_API_KEY trên server.');
     }
+
     const response = await ai.models.generateContent({
       model: 'gemini-3.8-flash',
       contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            examTitle: { type: Type.STRING },
+            topic: { type: Type.STRING },
+            part1: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  content: { type: Type.STRING },
+                  options: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                  },
+                  correctAnswer: { type: Type.STRING },
+                  cognitiveLevel: { type: Type.STRING },
+                  explanation: { type: Type.STRING },
+                },
+                required: ['content', 'options', 'correctAnswer', 'cognitiveLevel'],
+              },
+            },
+            part2: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  content: { type: Type.STRING },
+                  topic: { type: Type.STRING },
+                  knowledgeDomain: { type: Type.STRING },
+                  cognitiveLevel: { type: Type.STRING },
+                  trueFalseStatements: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        id: { type: Type.STRING },
+                        statement: { type: Type.STRING },
+                        isCorrect: { type: Type.BOOLEAN },
+                        explanation: { type: Type.STRING },
+                      },
+                      required: ['id', 'statement', 'isCorrect'],
+                    },
+                  },
+                },
+                required: ['content', 'trueFalseStatements'],
+              },
+            },
+          },
+          required: ['examTitle', 'part1', 'part2'],
+        },
+      },
     });
-    res.json({ success: true, text: response.text });
-  } catch (err: any) {
-    console.warn('Gemini API call failed or not configured, returning exam template:', err?.message);
-    res.json({
+
+    const parsedData = JSON.parse(response.text || '{}');
+    return res.json({
       success: true,
-      text: getFallbackExam(grade, topic),
-      isFallback: true,
+      data: parsedData,
+      isAiGenerated: true,
+    });
+  } catch (err: any) {
+    console.warn('Gemini API call failed, generating fallback standard 2025 graduation exam:', err?.message);
+    const fallbackData = getFallbackGraduationExam(topic, sourceText, examTitle);
+    return res.json({
+      success: true,
+      data: fallbackData,
+      isAiGenerated: false,
+      fallbackReason: err?.message || 'Sử dụng bộ tạo cấu trúc đề chuẩn Bộ GD&ĐT nội bộ.',
     });
   }
 });
@@ -805,6 +880,475 @@ C. HƯỚNG DẪN CHẤM VÀ THANG ĐIỂM
 - Tự luận:
   + Câu 1: Nêu đủ nguyên nhân chủ quan (1.0đ), nguyên nhân khách quan (0.5đ), ý nghĩa đối với dân tộc (0.5đ), ý nghĩa đối với phong trào giải phóng dân tộc trên thế giới (0.5đ).
   + Câu 2: Liên hệ logic, thực tế, thể hiện tinh thần chủ động tự học và trách nhiệm công dân trẻ (1.5đ).`;
+}
+
+function getFallbackGraduationExam(
+  topic = 'Lịch sử Việt Nam và Thế giới hiện đại',
+  sourceText = '',
+  examTitle = 'Đề luyện thi tốt nghiệp THPT Lịch sử 2025'
+) {
+  const p1 = [
+    {
+      id: 'fb_p1_1',
+      content: 'Hội nghị I-an-ta (tháng 2/1945) có sự tham gia của nguyên thủ ba cường quốc nào sau đây?',
+      options: [
+        'A. Liên Xô, Mỹ, Anh.',
+        'B. Mỹ, Anh, Pháp.',
+        'C. Liên Xô, Trung Quốc, Mỹ.',
+        'D. Mỹ, Pháp, Đức.'
+      ],
+      correctAnswer: 'A',
+      cognitiveLevel: 'Nhận biết',
+      explanation: 'Hội nghị I-an-ta diễn ra từ ngày 4 đến 11/2/1945 với sự tham dự của I. Xta-lin (Liên Xô), Ph. Ru-dơ-ven (Mỹ) và O. Sơ-chin (Anh).'
+    },
+    {
+      id: 'fb_p1_2',
+      content: 'Mục tiêu hàng đầu của tổ chức Liên hợp quốc được ghi nhận trong Hiến chương là gì?',
+      options: [
+        'A. Duy trì hòa bình và an ninh quốc tế.',
+        'B. Thúc đẩy hợp tác thương mại tự do toàn cầu.',
+        'C. Giải quyết xung đột bằng sức mạnh quân sự.',
+        'D. Thiết lập liên minh quân sự xuyên lục địa.'
+      ],
+      correctAnswer: 'A',
+      cognitiveLevel: 'Nhận biết',
+      explanation: 'Mục đích chính của Liên hợp quốc là duy trì hòa bình và an ninh thế giới, phát triển các mối quan hệ hữu nghị giữa các dân tộc.'
+    },
+    {
+      id: 'fb_p1_3',
+      content: 'Quốc gia nào ở Đông Nam Á tuyên bố độc lập sớm nhất trong năm 1945 sau khi Nhật Bản đầu hàng Đồng minh?',
+      options: [
+        'A. In-đô-nê-xi-a.',
+        'B. Việt Nam.',
+        'C. Lào.',
+        'D. Phi-líp-pin.'
+      ],
+      correctAnswer: 'A',
+      cognitiveLevel: 'Nhận biết',
+      explanation: 'In-đô-nê-xi-a tuyên bố độc lập ngày 17/8/1945, là quốc gia đầu tiên ở Đông Nam Á giành độc lập trong năm 1945.'
+    },
+    {
+      id: 'fb_p1_4',
+      content: 'Hiệp hội các quốc gia Đông Nam Á (ASEAN) được thành lập vào năm 1967 tại quốc gia nào?',
+      options: [
+        'A. Thái Lan.',
+        'B. In-đô-nê-xi-a.',
+        'C. Ma-lai-xi-a.',
+        'D. Xin-ga-po.'
+      ],
+      correctAnswer: 'A',
+      cognitiveLevel: 'Nhận biết',
+      explanation: 'Ngày 8/8/1967, Hiệp hội các quốc gia Đông Nam Á (ASEAN) được thành lập tại Băng Cốc (Thái Lan) với 5 nước sáng lập.'
+    },
+    {
+      id: 'fb_p1_5',
+      content: 'Kế hoạch Mác-san (1947) của Mỹ thực chất nhằm mục đích gì đối với các nước Tây Âu?',
+      options: [
+        'A. Viện trợ kinh tế nhằm tập hợp Tây Âu vào liên minh chống Liên Xô.',
+        'B. Giúp Tây Âu xây dựng nền kinh tế độc lập tự chủ hoàn toàn.',
+        'C. Bồi thường thiệt hại chiến tranh cho nhân dân các nước Tây Âu.',
+        'D. Hỗ trợ Tây Âu phục hồi để cạnh tranh trực tiếp với kinh tế Mỹ.'
+      ],
+      correctAnswer: 'A',
+      cognitiveLevel: 'Thông hiểu',
+      explanation: 'Kế hoạch Mác-san giúp phục hưng kinh tế Tây Âu nhưng đồng thời buộc Tây Âu phụ thuộc vào Mỹ và đối đầu với phe xã hội chủ nghĩa.'
+    },
+    {
+      id: 'fb_p1_6',
+      content: 'Xu thế chủ đạo trong quan hệ quốc tế sau Chiến tranh Lạnh là gì?',
+      options: [
+        'A. Hòa hoãn, đối thoại và hợp tác phát triển kinh tế.',
+        'B. Chạy đua vũ trang và cạnh tranh hạt nhân gay gắt.',
+        'C. Đơn cực hóa tuyệt đối dưới sự chi phối duy nhất của Mỹ.',
+        'D. Phân cực sâu sắc giữa các khối quân sự đối đầu.'
+      ],
+      correctAnswer: 'A',
+      cognitiveLevel: 'Thông hiểu',
+      explanation: 'Sau Chiến tranh Lạnh, xu thế hòa hoãn, đối thoại, lấy hợp tác kinh tế làm trọng tâm trở thành xu thế lớn của thế giới.'
+    },
+    {
+      id: 'fb_p1_7',
+      content: 'Trong cuộc khai thác thuộc địa lần thứ hai (1919 - 1929), tư bản Pháp đầu tư nhiều nhất vào ngành kinh tế nào ở Đông Dương?',
+      options: [
+        'A. Nông nghiệp (đồn điền cao su) và khai mỏ (than).',
+        'B. Công nghiệp luyện kim chế tạo máy móc hạng nặng.',
+        'C. Giao thông vận tải viễn thông hiện đại.',
+        'D. Tài chính ngân hàng và chứng khoán quốc tế.'
+      ],
+      correctAnswer: 'A',
+      cognitiveLevel: 'Nhận biết',
+      explanation: 'Pháp tập trung vốn nhiều nhất vào nông nghiệp (đồn điền cao su) và khai mỏ than để thu lợi nhuận nhanh và tận dụng nguồn nhân công rẻ mạt.'
+    },
+    {
+      id: 'fb_p1_8',
+      content: 'Giai cấp nào ở Việt Nam ra đời muộn nhưng nhanh chóng vươn lên nắm ngọn cờ lãnh đạo cách mạng Việt Nam?',
+      options: [
+        'A. Giai cấp công nhân.',
+        'B. Giai cấp tư sản dân tộc.',
+        'C. Giai cấp nông dân.',
+        'D. Tầng lớp tiểu tư sản trí thức.'
+      ],
+      correctAnswer: 'A',
+      cognitiveLevel: 'Nhận biết',
+      explanation: 'Giai cấp công nhân Việt Nam sớm tiếp thu chủ nghĩa Mác - Lênin và đóng vai trò lãnh đạo cách mạng thông qua đội tiên phong là Đảng Cộng sản.'
+    },
+    {
+      id: 'fb_p1_9',
+      content: 'Tổ chức cách mạng nào do Nguyễn Ái Quốc sáng lập vào tháng 6/1925 tại Quảng Châu (Trung Quốc)?',
+      options: [
+        'A. Hội Việt Nam Cách mạng Thanh niên.',
+        'B. Tân Việt Cách mạng đảng.',
+        'C. Việt Nam Quốc dân đảng.',
+        'D. Việt Nam Thanh niên Cách mạng đồng chí Hội.'
+      ],
+      correctAnswer: 'A',
+      cognitiveLevel: 'Nhận biết',
+      explanation: 'Tháng 6/1925, Nguyễn Ái Quốc thành lập Hội Việt Nam Cách mạng Thanh niên nhằm chuẩn bị về tổ chức và tư tưởng cho việc lập Đảng.'
+    },
+    {
+      id: 'fb_p1_10',
+      content: 'Hội nghị thành lập Đảng Cộng sản Việt Nam đầu năm 1930 diễn ra tại địa điểm nào?',
+      options: [
+        'A. Cửu Long (Hương Cảng, Trung Quốc).',
+        'B. Quảng Châu (Trung Quốc).',
+        'C. Băng Cốc (Thái Lan).',
+        'D. Pác Bó (Cao Bằng, Việt Nam).'
+      ],
+      correctAnswer: 'A',
+      cognitiveLevel: 'Nhận biết',
+      explanation: 'Hội nghị hợp nhất các tổ chức cộng sản họp tại bán đảo Cửu Long (Hương Cảng, Trung Quốc) từ ngày 6/1/1930 do Nguyễn Ái Quốc chủ trì.'
+    },
+    {
+      id: 'fb_p1_11',
+      content: 'Văn kiện nào được thông qua tại Hội nghị thành lập Đảng năm 1930 được xem là Cương lĩnh chính trị đầu tiên của Đảng?',
+      options: [
+        'A. Chính cương vắn tắt và Sách lược vắn tắt do Nguyễn Ái Quốc soạn thảo.',
+        'B. Luận cương chính trị tháng 10/1930 do Trần Phú soạn thảo.',
+        'C. Tuyên ngôn của Đảng Cộng sản Đông Dương.',
+        'D. Đề cương văn hóa Việt Nam năm 1943.'
+      ],
+      correctAnswer: 'A',
+      cognitiveLevel: 'Nhận biết',
+      explanation: 'Chính cương vắn tắt, Sách lược vắn tắt do Nguyễn Ái Quốc soạn thảo được thông qua tháng 2/1930 chính là Cương lĩnh chính trị đầu tiên.'
+    },
+    {
+      id: 'fb_p1_12',
+      content: 'Đỉnh cao của phong trào cách mạng 1930 - 1931 ở Việt Nam được đánh dấu bằng sự kiện nào?',
+      options: [
+        'A. Sự ra đời của chính quyền Xô viết Nghệ - Tĩnh.',
+        'B. Cuộc bãi công của công nhân đồn điền cao su Phú Riềng.',
+        'C. Khởi nghĩa Nam Kỳ và Bắc Sơn bùng nổ.',
+        'D. Tổng bãi công của công nhân nhà máy sợi Nam Định.'
+      ],
+      correctAnswer: 'A',
+      cognitiveLevel: 'Nhận biết',
+      explanation: 'Xô viết Nghệ - Tĩnh ra đời vào tháng 9/1930 tại Nghệ An và Hà Tĩnh là đỉnh cao của phong trào cách mạng 1930 - 1931.'
+    },
+    {
+      id: 'fb_p1_13',
+      content: 'Nhiệm vụ hàng đầu của cách mạng Việt Nam được Đảng ta xác định trong giai đoạn 1936 - 1939 là gì?',
+      options: [
+        'A. Đấu tranh đòi tự do, dân chủ, cơm áo, hòa bình và chống phát xít.',
+        'B. Đánh đổ đế quốc Pháp và phong kiến tay sai để giành độc lập dân tộc.',
+        'C. Đánh đuổi phát xít Nhật và tay sai bù nhìn giải phóng hoàn toàn đất nước.',
+        'D. Tịch thu ruộng đất của toàn bộ địa chủ chia cho nông dân nghèo.'
+      ],
+      correctAnswer: 'A',
+      cognitiveLevel: 'Thông hiểu',
+      explanation: 'Trong phong trào 1936 - 1939, Đảng chủ trương tạm gác khẩu hiệu độc lập dân tộc và cách mạng ruộng đất, tập trung đòi dân sinh, dân chủ.'
+    },
+    {
+      id: 'fb_p1_14',
+      content: 'Hội nghị lần thứ 8 Ban Chấp hành Trung ương Đảng (5/1941) đã quyết định thành lập mặt trận dân tộc thống nhất nào?',
+      options: [
+        'A. Mặt trận Việt Minh (Việt Nam Độc lập Đồng minh).',
+        'B. Mặt trận Thống nhất nhân dân phản đế Đông Dương.',
+        'C. Mặt trận Dân chủ Đông Dương.',
+        'D. Mặt trận Liên Việt.'
+      ],
+      correctAnswer: 'A',
+      cognitiveLevel: 'Nhận biết',
+      explanation: 'Hội nghị Trung ương 8 (tháng 5/1941) tại Pác Bó đã thành lập Mặt trận Việt Nam Độc lập Đồng minh (gọi tắt là Mặt trận Việt Minh).'
+    },
+    {
+      id: 'fb_p1_15',
+      content: 'Chỉ thị "Nhật - Pháp bắn nhau và hành động của chúng ta" (12/3/1945) đã xác định kẻ thù cụ thể trước mắt của nhân dân Đông Dương là ai?',
+      options: [
+        'A. Phát xít Nhật.',
+        'B. Thực dân Pháp.',
+        'C. Thực dân Anh.',
+        'D. Quân đội Tưởng Giới Thạch.'
+      ],
+      correctAnswer: 'A',
+      cognitiveLevel: 'Nhận biết',
+      explanation: 'Sau sự kiện Nhật đảo chính Pháp (9/3/1945), Đảng xác định phát xít Nhật trở thành kẻ thù chính, cụ thể trước mắt của cách mạng Đông Dương.'
+    },
+    {
+      id: 'fb_p1_16',
+      content: 'Ý nghĩa lịch sử quan trọng nhất của Cách mạng tháng Tám năm 1945 đối với dân tộc Việt Nam là gì?',
+      options: [
+        'A. Lật đổ ách thống trị của thực dân - phát xít, mở ra kỷ nguyên độc lập, tự do.',
+        'B. Đánh bại hoàn toàn chủ nghĩa đế quốc thực dân trên phạm vi thế giới.',
+        'C. Hoàn thành trọn vẹn cuộc cách mạng ruộng đất cho giai cấp nông dân.',
+        'D. Đưa Việt Nam trở thành một trong những cường quốc công nghiệp hàng đầu.'
+      ],
+      correctAnswer: 'A',
+      cognitiveLevel: 'Thông hiểu',
+      explanation: 'Cách mạng tháng Tám phá tan xiềng xích thực dân - phát xít, lập nên nước Việt Nam Dân chủ Cộng hòa, mở ra kỷ nguyên độc lập tự do.'
+    },
+    {
+      id: 'fb_p1_17',
+      content: 'Chủ tịch Hồ Chí Minh ra "Lời kêu gọi toàn quốc kháng chiến" chống thực dân Pháp vào thời điểm nào?',
+      options: [
+        'A. Tối ngày 19/12/1946.',
+        'B. Sáng ngày 2/9/1945.',
+        'C. Đêm ngày 23/9/1945.',
+        'D. Ngày 6/3/1946.'
+      ],
+      correctAnswer: 'A',
+      cognitiveLevel: 'Nhận biết',
+      explanation: 'Tối 19/12/1946, Chủ tịch Hồ Chí Minh thay mặt Trung ương Đảng và Chính phủ ra Lời kêu gọi toàn quốc kháng chiến.'
+    },
+    {
+      id: 'fb_p1_18',
+      content: 'Chiến thắng nào của quân dân ta đã làm thất bại âm mưu "đánh nhanh thắng nhanh" của thực dân Pháp?',
+      options: [
+        'A. Chiến dịch Việt Bắc thu - đông 1947.',
+        'B. Chiến dịch Biên giới thu - đông 1950.',
+        'C. Chiến dịch Tây Bắc 1952.',
+        'D. Chiến dịch Điện Biên Phủ 1954.'
+      ],
+      correctAnswer: 'A',
+      cognitiveLevel: 'Nhận biết',
+      explanation: 'Chiến thắng Việt Bắc thu - đông 1947 đã bẻ gãy cuộc tấn công lên căn cứ địa của Pháp, buộc Pháp phải chuyển từ đánh nhanh thắng nhanh sang đánh lâu dài.'
+    },
+    {
+      id: 'fb_p1_19',
+      content: 'Ý nghĩa chiến lược to lớn của chiến thắng Biên giới thu - đông 1950 là gì?',
+      options: [
+        'A. Quân đội ta giành được quyền chủ động chiến lược trên chiến trường chính Bắc Bộ.',
+        'B. Đánh bại hoàn toàn ý chí xâm lược của thực dân Pháp tại Việt Nam.',
+        'C. Buộc Pháp phải ký ngay Hiệp định Giơ-ne-vơ công nhận độc lập.',
+        'D. Giải phóng toàn bộ lãnh thổ Việt Nam từ vĩ tuyến 17 trở ra Bắc.'
+      ],
+      correctAnswer: 'A',
+      cognitiveLevel: 'Thông hiểu',
+      explanation: 'Với chiến thắng Biên giới 1950, ta đã mở đường liên lạc với các nước XHCN và giành thế chủ động chiến lược trên chiến trường chính.'
+    },
+    {
+      id: 'fb_p1_20',
+      content: 'Chiến dịch lịch sử Điện Biên Phủ (1954) toàn thắng đã trực tiếp dẫn tới kết quả ngoại giao nào sau đây?',
+      options: [
+        'A. Buộc Pháp phải ký Hiệp định Giơ-ne-vơ chấm dứt chiến tranh ở Đông Dương.',
+        'B. Ký kết Hiệp định Pa-ri lập lại hòa bình tại miền Nam Việt Nam.',
+        'C. Buộc Mỹ phải tuyên bố ngừng ném bom bắn phá miền Bắc Việt Nam.',
+        'D. Gia nhập tổ chức Hiệp ước phòng thủ Đông Nam Á (SEATO).'
+      ],
+      correctAnswer: 'A',
+      cognitiveLevel: 'Thông hiểu',
+      explanation: 'Chiến thắng Điện Biên Phủ giáng đòn quyết định đập tan kế hoạch Na-va, buộc Pháp phải ký Hiệp định Giơ-ne-vơ năm 1954.'
+    },
+    {
+      id: 'fb_p1_21',
+      content: 'Phong trào "Đồng khởi" (1959 - 1960) nổ ra tiêu biểu nhất tại địa phương nào ở miền Nam?',
+      options: [
+        'A. Bến Tre.',
+        'B. Quảng Nam.',
+        'C. Tây Ninh.',
+        'D. Bình Định.'
+      ],
+      correctAnswer: 'A',
+      cognitiveLevel: 'Nhận biết',
+      explanation: 'Phong trào Đồng khởi bắt đầu từ các cuộc nổi dậy lẻ tẻ và bùng nổ thành cao trào mạnh mẽ ở huyện Mỏ Cày, tỉnh Bến Tre ngày 17/1/1960.'
+    },
+    {
+      id: 'fb_p1_22',
+      content: 'Chiến lược "Chiến tranh cục bộ" (1965 - 1968) của Mỹ ở miền Nam có điểm khác biệt căn bản nào so với "Chiến tranh đặc biệt"?',
+      options: [
+        'A. Sử dụng trực tiếp lực lượng quân viễn chinh Mỹ và quân đồng minh tham chiến quy mô lớn.',
+        'B. Hoàn toàn không dùng quân đội Sài Gòn trên tuyến đầu tác chiến.',
+        'C. Không sử dụng hỏa lực pháo binh và không quân yểm trợ hỏa lực.',
+        'D. Chỉ giới hạn phạm vi tác chiến ở các vùng đô thị miền Nam.'
+      ],
+      correctAnswer: 'A',
+      cognitiveLevel: 'Thông hiểu',
+      explanation: 'Trong Chiến tranh cục bộ, Mỹ đưa ồ ạt quân viễn chinh Mỹ và đồng minh trực tiếp tham chiến, giữ vai trò chủ đạo trên chiến trường.'
+    },
+    {
+      id: 'fb_p1_23',
+      content: 'Thắng lợi nào của quân dân miền Bắc cuối năm 1972 được coi là trận "Điện Biên Phủ trên không"?',
+      options: [
+        'A. Đánh bại cuộc tập kích chiến lược đường không bằng máy bay B-52 vào Hà Nội, Hải Phòng.',
+        'B. Đánh chìm các tàu chiến hạm đội 7 của Mỹ trên vùng biển Vịnh Bắc Bộ.',
+        'C. Phá hủy toàn bộ căn cứ quân sự Khe Sanh và Đường 9 - Nam Lào.',
+        'D. Đập tan cuộc hành quân Lam Sơn 719 của quân đội Sài Gòn.'
+      ],
+      correctAnswer: 'A',
+      cognitiveLevel: 'Nhận biết',
+      explanation: 'Trận 12 ngày đêm cuối tháng 12/1972 đập tan cuộc tập kích B-52 của Mỹ vào Hà Nội, Hải Phòng, buộc Mỹ phải ký Hiệp định Pa-ri 1973.'
+    },
+    {
+      id: 'fb_p1_24',
+      content: 'Chiến dịch quân sự quyết định đỉnh cao trong cuộc Tổng tiến công và nổi dậy mùa Xuân năm 1975 là:',
+      options: [
+        'A. Chiến dịch Hồ Chí Minh lịch sử.',
+        'B. Chiến dịch Tây Nguyên.',
+        'C. Chiến dịch Huế - Đà Nẵng.',
+        'D. Chiến dịch Đường 14 - Phước Long.'
+      ],
+      correctAnswer: 'A',
+      cognitiveLevel: 'Nhận biết',
+      explanation: 'Chiến dịch Hồ Chí Minh (từ ngày 26 đến 30/4/1975) giải phóng hoàn toàn Sài Gòn - Gia Định, kết thúc thắng lợi cuộc kháng chiến chống Mỹ.'
+    }
+  ];
+
+  const p2 = [
+    {
+      id: 'fb_p2_1',
+      topic: 'Phong trào cách mạng giải phóng dân tộc (1930 - 1945)',
+      knowledgeDomain: 'Cách mạng tháng Tám và Tuyên ngôn Độc lập',
+      cognitiveLevel: 'Thông hiểu',
+      content: `Đọc đoạn trích sau trong Tuyên ngôn Độc lập của Chủ tịch Hồ Chí Minh (ngày 2/9/1945):
+"Pháp chạy, Nhật hàng, vua Bảo Đại thoái vị. Dân ta đã đánh đổ các xiềng xích thực dân gần 100 năm nay để gây dựng nên nước Việt Nam độc lập. Dân ta lại đánh đổ chế độ quân chủ mấy mươi thế kỷ mà lập nên chế độ Dân chủ Cộng hòa... Nước Việt Nam có quyền hưởng tự do và độc lập, và sự thật đã thành một nước tự do, độc lập. Toàn thể dân tộc Việt Nam quyết đem tất cả tinh thần và lực lượng, tính mạng và của cải để giữ vững quyền tự do, độc lập ấy."`,
+      trueFalseStatements: [
+        {
+          id: 'a',
+          statement: 'Tuyên ngôn Độc lập khẳng định cuộc Cách mạng tháng Tám năm 1945 đã lật đổ cùng lúc ách thống trị của thực dân, phát xít và chế độ phong kiến quân chủ.',
+          isCorrect: true,
+          explanation: 'Đoạn trích nêu rõ: đánh đổ xiềng xích thực dân gần 100 năm và chế độ quân chủ mấy mươi thế kỷ.'
+        },
+        {
+          id: 'b',
+          statement: 'Nền độc lập của dân tộc Việt Nam năm 1945 là kết quả do quân Đồng minh trực tiếp trao trả sau khi đánh bại phát xít Nhật.',
+          isCorrect: false,
+          explanation: 'Độc lập là thành quả do toàn thể nhân dân Việt Nam dưới sự lãnh đạo của Đảng và Mặt trận Việt Minh đứng lên tự giành lấy trước khi Đồng minh vào.'
+        },
+        {
+          id: 'c',
+          statement: 'Bản Tuyên ngôn Độc lập đánh dấu sự ra đời của nhà nước dân chủ nhân dân đầu tiên ở Đông Nam Á: nước Việt Nam Dân chủ Cộng hòa.',
+          isCorrect: true,
+          explanation: 'Bản tuyên ngôn chính thức khai sinh nước Việt Nam Dân chủ Cộng hòa ngày 2/9/1945.'
+        },
+        {
+          id: 'd',
+          statement: 'Lời thề "quyết đem tất cả tinh thần và lực lượng..." thể hiện ý chí quyết tâm sắt đá của nhân dân ta bảo vệ nền độc lập vừa giành được trước nguy cơ xâm lược mới.',
+          isCorrect: true,
+          explanation: 'Khẳng định ý chí kiên quyết giữ vững thành quả cách mạng của toàn thể dân tộc Việt Nam.'
+        }
+      ]
+    },
+    {
+      id: 'fb_p2_2',
+      topic: 'Cuộc kháng chiến chống thực dân Pháp (1945 - 1954)',
+      knowledgeDomain: 'Chiến dịch Điện Biên Phủ và Hiệp định Giơ-ne-vơ',
+      cognitiveLevel: 'Thông hiểu',
+      content: `Đọc tư liệu lịch sử sau đây về Chiến dịch Điện Biên Phủ (1954):
+"Tập đoàn cứ điểm Điện Biên Phủ gồm 49 cứ điểm, được chia thành 3 phân khu liên hoàn: Phân khu Bắc, Phân khu Trung tâm và Phân khu Nam. Thực dân Pháp và can thiệp Mỹ coi Điện Biên Phủ là 'pháo đài bất khả xâm phạm', một 'cối xay thịt' nghiền nát bộ đội chủ lực Việt Minh. Với quyết tâm 'tất cả cho tiền tuyến, tất cả để chiến thắng', sau 56 ngày đêm khoét núi ngủ hầm, quân và dân ta đã đập tan tập đoàn cứ điểm này, bắt sống toàn bộ bộ chỉ huy Pháp do tướng Đờ Ca-xtơ-ri cầm đầu vào ngày 7/5/1954."`,
+      trueFalseStatements: [
+        {
+          id: 'a',
+          statement: 'Điện Biên Phủ vốn là điểm tập trung quân được định sẵn từ trước trong kế hoạch Na-va ban hành giữa năm 1953.',
+          isCorrect: false,
+          explanation: 'Điện Biên Phủ không có trong kế hoạch ban đầu của Na-va, mà do các cuộc tiến công chiến lược của ta trong đông - xuân 1953 - 1954 buộc Pháp phải biến Điện Biên Phủ thành nơi tập trung quân thứ hai.'
+        },
+        {
+          id: 'b',
+          statement: 'Thắng lợi của Chiến dịch Điện Biên Phủ gắn liền với quyết định lịch sử chuyển phương châm từ "đánh nhanh, thắng nhanh" sang "đánh chắc, tiến chắc" của Đại tướng Võ Nguyên Giáp.',
+          isCorrect: true,
+          explanation: 'Chuyển phương châm sang đánh chắc tiến chắc là quyết định sáng suốt mang tính quyết định thắng lợi của chiến dịch.'
+        },
+        {
+          id: 'c',
+          statement: 'Chiến thắng Điện Biên Phủ đã làm sụp đổ hoàn toàn chế độ chủ nghĩa thực dân mới của đế quốc Mỹ ở miền Nam Việt Nam.',
+          isCorrect: false,
+          explanation: 'Điện Biên Phủ giáng đòn quyết định kết thúc chủ nghĩa thực dân cũ của Pháp; lúc này Mỹ mới chỉ can thiệp giúp Pháp, chưa thiết lập chủ nghĩa thực dân mới ở miền Nam.'
+        },
+        {
+          id: 'd',
+          statement: 'Chiến dịch Điện Biên Phủ là đòn giáng quân sự quyết định dẫn tới việc ký kết Hiệp định Giơ-ne-vơ năm 1954 về Đông Dương.',
+          isCorrect: true,
+          explanation: 'Thắng lợi quân sự tạo tiền đề quyết định buộc Pháp phải ngồi vào bàn đàm phán ký Hiệp định Giơ-ne-vơ công nhận độc lập, chủ quyền, thống nhất của 3 nước Đông Dương.'
+        }
+      ]
+    },
+    {
+      id: 'fb_p2_3',
+      topic: 'Cuộc kháng chiến chống Mỹ, cứu nước (1954 - 1975)',
+      knowledgeDomain: 'Hiệp định Pa-ri năm 1973',
+      cognitiveLevel: 'Vận dụng',
+      content: `Đọc đoạn trích trong Điều 1 và Điều 5 của Hiệp định Pa-ri về Việt Nam (ngày 27/1/1973):
+"Điều 1: Hoa Kỳ và các nước khác tôn trọng độc lập, chủ quyền, thống nhất, toàn vẹn lãnh thổ của nước Việt Nam như Hiệp định Giơ-ne-vơ năm một nghìn chín trăm năm mươi tư về Việt Nam đã công nhận.
+Điều 5: Trong thời hạn sáu mươi ngày kể từ khi ký Hiệp định này, sẽ hoàn thành việc rút hoàn toàn khỏi miền Nam Việt Nam quân đội, cố vấn quân sự, và nhân viên quân sự của Hoa Kỳ và của các nước ngoài khác..."`,
+      trueFalseStatements: [
+        {
+          id: 'a',
+          statement: 'Hiệp định Pa-ri năm 1973 buộc Hoa Kỳ phải cam kết tôn trọng các quyền dân tộc cơ bản của nhân dân Việt Nam.',
+          isCorrect: true,
+          explanation: 'Điều 1 nêu rõ Hoa Kỳ và các nước tôn trọng độc lập, chủ quyền, thống nhất, toàn vẹn lãnh thổ của nước Việt Nam.'
+        },
+        {
+          id: 'b',
+          statement: 'Sau khi ký Hiệp định Pa-ri, quân đội miền Bắc cũng phải rút hoàn toàn lực lượng vũ trang khỏi chiến trường miền Nam.',
+          isCorrect: false,
+          explanation: 'Hiệp định chỉ quy định quân Mỹ và quân đồng minh nước ngoài rút lui; lực lượng vũ trang cách mạng của ta vẫn hợp pháp ở lại miền Nam.'
+        },
+        {
+          id: 'c',
+          statement: 'Hiệp định Pa-ri năm 1973 đã hoàn thành mục tiêu chiến lược "Đánh cho Mỹ cút", tạo so sánh lực lượng có lợi để tiến tới "Đánh cho ngụy nhào".',
+          isCorrect: true,
+          explanation: 'Đây là thắng lợi ngoại giao to lớn kết hợp quân sự, buộc quân viễn chinh Mỹ phải rút về nước theo tư tưởng chỉ đạo của Chủ tịch Hồ Chí Minh.'
+        },
+        {
+          id: 'd',
+          statement: 'Hiệp định Pa-ri năm 1973 chấm dứt ngay lập tức mọi hoạt động tác chiến và mang lại hòa bình trọn vẹn trên toàn lãnh thổ Việt Nam.',
+          isCorrect: false,
+          explanation: 'Sau Hiệp định Pa-ri, chính quyền Sài Gòn do Mỹ hậu thuẫn tiếp tục tiến hành các chiến dịch "tràn ngập lãnh thổ", ta phải tiếp tục chiến đấu đến mùa Xuân 1975 mới giải phóng hoàn toàn.'
+        }
+      ]
+    },
+    {
+      id: 'fb_p2_4',
+      topic: 'Đất nước trọn niềm vui & Công cuộc Đổi mới (1975 đến nay)',
+      knowledgeDomain: 'Đường lối Đổi mới của Đảng Cộng sản Việt Nam',
+      cognitiveLevel: 'Vận dụng cao',
+      content: `Đọc trích đoạn trong Văn kiện Đại hội đại biểu toàn quốc lần thứ VI của Đảng (tháng 12/1986):
+"Đại hội VI của Đảng là mốc lịch sử quan trọng, mở ra thời kỳ đổi mới toàn diện đất nước. Đảng ta đã thẳng thắn 'nhìn thẳng vào sự thật, đánh giá đúng sự thật, nói rõ sự thật', thừa nhận những sai lầm khuyết điểm chủ quan, duy ý chí trong cải tạo xã hội chủ nghĩa và quản lý kinh tế. Trọng tâm của công cuộc đổi mới là đổi mới về kinh tế, phát triển nền kinh tế hàng hóa nhiều thành phần vận hành theo cơ chế thị trường có sự quản lý của Nhà nước, đồng thời từng bước đổi mới về chính trị và mở rộng quan hệ đối ngoại."`,
+      trueFalseStatements: [
+        {
+          id: 'a',
+          statement: 'Đại hội lần thứ VI (1986) xác định trọng tâm hàng đầu của công cuộc đổi mới đất nước là đổi mới hệ thống chính trị.',
+          isCorrect: false,
+          explanation: 'Đại hội VI xác định trọng tâm là đổi mới về kinh tế, đổi mới chính trị phải từng bước, vững chắc, giữ vững ổn định chính trị.'
+        },
+        {
+          id: 'b',
+          statement: 'Chủ trương phát triển nền kinh tế hàng hóa nhiều thành phần đã xóa bỏ cơ chế tập trung quan liêu, bao cấp tồn tại trước đó.',
+          isCorrect: true,
+          explanation: 'Kinh tế nhiều thành phần theo cơ chế thị trường định hướng XHCN thay thế cơ chế bao cấp trì trệ cũ.'
+        },
+        {
+          id: 'c',
+          statement: 'Tinh thần "nhìn thẳng vào sự thật, nói rõ sự thật" thể hiện bản lĩnh dũng cảm và tinh thần tự phê bình nghiêm túc của Đảng Cộng sản Việt Nam.',
+          isCorrect: true,
+          explanation: 'Văn kiện Đại hội khẳng định sự dũng cảm nhìn thẳng vào khuyết điểm chủ quan để tìm ra lối thoát cho khủng hoảng kinh tế - xã hội.'
+        },
+        {
+          id: 'd',
+          statement: 'Đường lối đổi mới đất nước khởi xướng từ năm 1986 đồng nghĩa với việc từ bỏ mục tiêu con đường đi lên chủ nghĩa xã hội ở Việt Nam.',
+          isCorrect: false,
+          explanation: 'Đổi mới không phải là thay đổi mục tiêu chủ nghĩa xã hội, mà là làm cho chủ nghĩa xã hội được nhận thức đúng đắn và xây dựng có hiệu quả hơn.'
+        }
+      ]
+    }
+  ];
+
+  return {
+    examTitle: examTitle || `Đề ôn thi tốt nghiệp THPT 2025 môn Lịch sử - Chủ đề: ${topic}`,
+    topic: topic || 'Tổng hợp Lịch sử Việt Nam và Thế giới',
+    grade: 12,
+    part1: p1,
+    part2: p2,
+  };
 }
 
 function getFallbackSupportPlan(studentName = 'Học sinh', score = '4.5'): string {

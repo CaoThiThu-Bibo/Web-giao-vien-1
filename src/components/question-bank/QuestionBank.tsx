@@ -5,6 +5,7 @@ import { Modal } from '../common/Modal';
 import { WordImportModal } from './WordImportModal';
 import { downloadWordTemplate, parseQuestionsFromText } from '../../lib/wordQuestionParser';
 import { GraduationExamModal } from './GraduationExamModal';
+import { StudentExamRoomModal } from './StudentExamRoomModal';
 import { standardGraduationExamQuestions } from '../../data/graduationExamData';
 import { normalizeExamQuestionsTo10 } from '../../lib/examScoring';
 import {
@@ -35,7 +36,11 @@ import {
   Award,
   GraduationCap,
   Calculator,
+  Clock,
+  Play,
+  ChevronRight,
 } from 'lucide-react';
+import { ExamRoomHubModal, ExamRoomKey } from './ExamRoomHubModal';
 
 export const QuestionBank: React.FC = () => {
   const { questions, addQuestion, updateQuestion, deleteQuestion } = useApp();
@@ -53,6 +58,9 @@ export const QuestionBank: React.FC = () => {
   const [previewQuestion, setPreviewQuestion] = useState<Question | null>(null);
   const [isBuildExamModalOpen, setIsBuildExamModalOpen] = useState(false);
   const [isGraduationExamModalOpen, setIsGraduationExamModalOpen] = useState(false);
+  const [isStudentExamModalOpen, setIsStudentExamModalOpen] = useState(false);
+  const [isExamRoomHubOpen, setIsExamRoomHubOpen] = useState(false);
+  const [selectedRoomMode, setSelectedRoomMode] = useState<ExamRoomKey>('all');
   const [isAutoScore10, setIsAutoScore10] = useState(true);
 
   // Quick single-question paste inside Add modal
@@ -516,14 +524,30 @@ export const QuestionBank: React.FC = () => {
             Tải lên từ Word / Dán nhanh
           </button>
 
-          {/* MOET 2025 Grade 12 Graduation Exam Structure & Auto-Grading */}
+          {/* Chỗ luyện đề thi ôn thi tốt nghiệp THPT 12 (AI Soạn theo tư liệu & Chuẩn Bộ GD&ĐT) */}
           <button
             onClick={() => setIsGraduationExamModalOpen(true)}
-            className="px-3.5 py-2 bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 hover:from-amber-600 hover:to-amber-800 text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer border border-amber-400"
-            title="Cấu trúc đề ôn thi tốt nghiệp THPT Lớp 12 môn Lịch sử chuẩn Bộ GD&ĐT 2025 và phòng chấm điểm tự động thang 10"
+            className="px-4 py-2 bg-gradient-to-r from-amber-500 via-orange-600 to-red-600 hover:from-amber-600 hover:to-red-700 text-white rounded-xl text-xs font-black flex items-center gap-2 shadow-md hover:shadow-lg transition-all cursor-pointer border border-amber-300 ring-2 ring-amber-400/30"
+            title="Chỗ luyện đề thi ôn thi tốt nghiệp: Tải lên đề thi, AI tự soạn đề theo dữ liệu cô cung cấp, và phòng chấm tự động thang 10 chuẩn Bộ GD&ĐT"
           >
-            <Award className="w-4 h-4 text-amber-200" />
-            Đề Tốt nghiệp THPT 2025 (Thang 10)
+            <GraduationCap className="w-4 h-4 text-amber-100" />
+            <span>Luyện Đề Ôn Thi Tốt Nghiệp THPT 12</span>
+            <span className="bg-white/25 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+              AI & Chuẩn Bộ
+            </span>
+          </button>
+
+          {/* Phòng Thi Trực Tuyến Học Sinh (5 phòng chuyên biệt) */}
+          <button
+            onClick={() => setIsExamRoomHubOpen(true)}
+            className="px-4 py-2 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 hover:from-emerald-700 hover:to-cyan-800 text-white rounded-xl text-xs font-black flex items-center gap-2 shadow-md hover:shadow-lg transition-all cursor-pointer border border-emerald-300 ring-2 ring-emerald-400/30"
+            title="Mở Không gian 5 Phòng thi trực tuyến chuyên biệt: Trắc nghiệm đơn, Đúng/Sai tư liệu, Điền từ, Ghép đôi, Tự luận"
+          >
+            <Clock className="w-4 h-4 text-emerald-100" />
+            <span>Phòng Thi Trực Tuyến Học Sinh</span>
+            <span className="bg-white/25 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+              5 Phòng Thi Riêng Biệt
+            </span>
           </button>
 
           {selectedQuestionIds.length > 0 && (
@@ -542,6 +566,103 @@ export const QuestionBank: React.FC = () => {
           >
             <Plus className="w-4 h-4" />
             Thêm câu hỏi mới
+          </button>
+        </div>
+      </div>
+
+      {/* QUICK 5-ROOM LAUNCH BAR */}
+      <div className="bg-gradient-to-r from-sky-50 via-indigo-50/50 to-teal-50 border border-sky-200/80 rounded-2xl p-3 flex flex-wrap items-center justify-between gap-2.5 shadow-2xs font-sans">
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-lg bg-[#073B66] text-white flex items-center justify-center font-bold text-xs shadow-2xs">
+            5
+          </div>
+          <span className="text-xs font-black text-[#073B66] uppercase tracking-wide">
+            5 Phòng Thi Chuyên Biệt Môn Lịch Sử:
+          </span>
+          <span className="text-[11px] text-slate-500 hidden lg:inline">
+            (Bấm vào từng phòng để vào thi ngay theo dạng mong muốn)
+          </span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          {/* Phòng 1 */}
+          <button
+            onClick={() => {
+              setSelectedRoomMode('Trắc nghiệm đơn');
+              setIsStudentExamModalOpen(true);
+            }}
+            className="px-3 py-1.5 rounded-xl bg-white hover:bg-blue-50 border border-blue-200 hover:border-blue-400 text-blue-900 text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer transition-all active:scale-95"
+            title="Vào Phòng 1: Trắc nghiệm đơn (Nhiều lựa chọn A-B-C-D)"
+          >
+            <Layers className="w-3.5 h-3.5 text-blue-600" />
+            <span>Phòng 1: TN Đơn</span>
+            <span className="bg-blue-100 text-blue-800 text-[10px] px-1.5 py-0.2 rounded-full font-bold">15p</span>
+          </button>
+
+          {/* Phòng 2 */}
+          <button
+            onClick={() => {
+              setSelectedRoomMode('Trắc nghiệm đúng sai');
+              setIsStudentExamModalOpen(true);
+            }}
+            className="px-3 py-1.5 rounded-xl bg-white hover:bg-amber-50 border border-amber-200 hover:border-amber-400 text-amber-950 text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer transition-all active:scale-95"
+            title="Vào Phòng 2: Đúng / Sai có ngữ liệu tư liệu (Chuẩn 2025)"
+          >
+            <FileText className="w-3.5 h-3.5 text-amber-600" />
+            <span>Phòng 2: Đúng / Sai</span>
+            <span className="bg-amber-100 text-amber-900 text-[10px] px-1.5 py-0.2 rounded-full font-bold">20p</span>
+          </button>
+
+          {/* Phòng 3 */}
+          <button
+            onClick={() => {
+              setSelectedRoomMode('Điền từ');
+              setIsStudentExamModalOpen(true);
+            }}
+            className="px-3 py-1.5 rounded-xl bg-white hover:bg-emerald-50 border border-emerald-200 hover:border-emerald-400 text-emerald-950 text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer transition-all active:scale-95"
+            title="Vào Phòng 3: Điền từ vào chỗ trống (Ngân hàng từ khóa)"
+          >
+            <CheckSquare className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Phòng 3: Điền Từ</span>
+            <span className="bg-emerald-100 text-emerald-900 text-[10px] px-1.5 py-0.2 rounded-full font-bold">15p</span>
+          </button>
+
+          {/* Phòng 4 */}
+          <button
+            onClick={() => {
+              setSelectedRoomMode('Nối từ');
+              setIsStudentExamModalOpen(true);
+            }}
+            className="px-3 py-1.5 rounded-xl bg-white hover:bg-purple-50 border border-purple-200 hover:border-purple-400 text-purple-950 text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer transition-all active:scale-95"
+            title="Vào Phòng 4: Ghép đôi sự kiện (Cột A - Cột B)"
+          >
+            <ArrowRightLeft className="w-3.5 h-3.5 text-purple-600" />
+            <span>Phòng 4: Ghép Đôi</span>
+            <span className="bg-purple-100 text-purple-900 text-[10px] px-1.5 py-0.2 rounded-full font-bold">15p</span>
+          </button>
+
+          {/* Phòng 5 */}
+          <button
+            onClick={() => {
+              setSelectedRoomMode('Tự luận');
+              setIsStudentExamModalOpen(true);
+            }}
+            className="px-3 py-1.5 rounded-xl bg-white hover:bg-rose-50 border border-rose-200 hover:border-rose-400 text-rose-950 text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer transition-all active:scale-95"
+            title="Vào Phòng 5: Tự luận chuyên sâu (Bộ đếm từ, Rubric, AI chấm thử)"
+          >
+            <Award className="w-3.5 h-3.5 text-rose-600" />
+            <span>Phòng 5: Tự Luận</span>
+            <span className="bg-rose-100 text-rose-900 text-[10px] px-1.5 py-0.2 rounded-full font-bold">35p</span>
+          </button>
+
+          {/* Xem Trung Tâm Hub */}
+          <button
+            onClick={() => setIsExamRoomHubOpen(true)}
+            className="px-3 py-1.5 rounded-xl bg-[#073B66] hover:bg-[#0878C9] text-white text-xs font-black flex items-center gap-1.5 shadow-xs cursor-pointer transition-all"
+            title="Xem danh mục và chọn học viên cho từng phòng"
+          >
+            <span>Chi tiết 5 phòng</span>
+            <ChevronRight className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
@@ -2040,20 +2161,46 @@ D. Những dự đoán của con người...
         }}
       />
 
-      {/* Modal: MOET 2025 Grade 12 Graduation Exam Structure & Live Auto-Scorer */}
+      {/* Modal: Chỗ luyện đề thi ôn thi tốt nghiệp THPT 12 */}
       <GraduationExamModal
         isOpen={isGraduationExamModalOpen}
         onClose={() => setIsGraduationExamModalOpen(false)}
-        onImportToBank={() => {
+        onImportToBank={(examQuestions) => {
+          const listToAdd = examQuestions || standardGraduationExamQuestions;
           let added = 0;
-          standardGraduationExamQuestions.forEach((sq) => {
+          listToAdd.forEach((sq) => {
             if (!questions.some((q) => q.id === sq.id)) {
               addQuestion(sq);
               added++;
             }
           });
-          showToast(`Đã lưu thành công ${added} câu hỏi Đề ôn thi tốt nghiệp 2025 vào Ngân hàng câu hỏi!`);
+          showToast(`Đã lưu thành công ${added} câu hỏi Đề ôn thi tốt nghiệp vào Ngân hàng câu hỏi!`);
         }}
+      />
+
+      {/* Modal: Trung Tâm 5 Phòng Thi Trực Tuyến Chuyên Biệt */}
+      <ExamRoomHubModal
+        isOpen={isExamRoomHubOpen}
+        onClose={() => setIsExamRoomHubOpen(false)}
+        onSelectRoom={(roomKey, durationMinutes, classId, studentId) => {
+          setSelectedRoomMode(roomKey);
+          setIsExamRoomHubOpen(false);
+          setIsStudentExamModalOpen(true);
+        }}
+      />
+
+      {/* Modal: Phòng Thi Trực Tuyến Học Sinh (5 dạng câu & Đếm ngược thời gian) */}
+      <StudentExamRoomModal
+        isOpen={isStudentExamModalOpen}
+        onClose={() => setIsStudentExamModalOpen(false)}
+        roomMode={selectedRoomMode}
+        examTitle={
+          selectedQuestionIds.length > 0
+            ? `Bài thi trực tuyến (${selectedQuestionIds.length} câu tuyển chọn) - Môn Lịch sử`
+            : undefined
+        }
+        initialQuestions={selectedQuestionIds.length > 0 ? selectedQuestions : undefined}
+        defaultDurationMinutes={45}
       />
     </div>
   );
