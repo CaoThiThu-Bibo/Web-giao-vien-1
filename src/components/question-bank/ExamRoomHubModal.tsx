@@ -18,6 +18,9 @@ import {
   GraduationCap,
   Play,
   RotateCcw,
+  Plus,
+  Edit3,
+  Save,
 } from 'lucide-react';
 
 export type ExamRoomKey = 'Trắc nghiệm đơn' | 'Trắc nghiệm đúng sai' | 'Điền từ' | 'Nối từ' | 'Tự luận' | 'all';
@@ -125,7 +128,13 @@ export const EXAM_ROOMS_DATA: ExamRoomInfo[] = [
 interface ExamRoomHubModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSelectRoom: (roomKey: ExamRoomKey, durationMinutes?: number, classId?: string, studentId?: string) => void;
+  onSelectRoom: (
+    roomKey: ExamRoomKey,
+    durationMinutes?: number,
+    classId?: string,
+    studentId?: string,
+    isTeacherMode?: boolean
+  ) => void;
 }
 
 export const ExamRoomHubModal: React.FC<ExamRoomHubModalProps> = ({
@@ -250,12 +259,43 @@ export const ExamRoomHubModal: React.FC<ExamRoomHubModalProps> = ({
 
         {/* 5 Rooms Cards Grid */}
         <div className="p-5 sm:p-6 overflow-y-auto space-y-4">
+          {/* TEACHER BANNER: THÊM CÂU HỎI & SOẠN ĐỀ CHO 5 PHÒNG */}
+          <div className="p-3.5 bg-gradient-to-r from-emerald-50 via-teal-50 to-sky-50 border-2 border-emerald-300 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs shadow-xs font-sans">
+            <div className="flex items-center gap-2.5">
+              <span className="p-2 bg-emerald-600 text-white rounded-xl shadow-xs shrink-0">
+                <Plus className="w-4 h-4 stroke-[2.5]" />
+              </span>
+              <div>
+                <h4 className="font-black text-[#073B66] text-sm flex items-center gap-2">
+                  Khu Vực Giáo viên: Thêm câu hỏi mới & Hiệu chỉnh đề thi 5 phòng
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                    Cô Cao Thị Thu
+                  </span>
+                </h4>
+                <p className="text-slate-600 text-xs mt-0.5">
+                  Bấm ngay nút <strong>[ ➕ Thêm câu hỏi mới ]</strong> hoặc <strong>[ Soạn/Sửa đề ]</strong> ở mỗi phòng thi bên dưới để nhập nội dung, chọn đáp án trực quan, lưu câu hoặc xóa câu.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onSelectRoom('Trắc nghiệm đơn', 15, selectedClassId, selectedStudentId, true)}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95"
+              >
+                <Plus className="w-4 h-4" />
+                Thêm câu hỏi mới ngay
+              </button>
+            </div>
+          </div>
+
           <div className="flex items-center justify-between">
-            <h3 className="font-bold text-sm text-[#073B66] uppercase tracking-wider flex items-center gap-2">
+            <h3 className="font-bold text-sm text-[#073B66] uppercase tracking-wider flex items-center gap-2 font-sans">
               <BookOpen className="w-4 h-4 text-[#0878C9]" />
-              Chọn 1 trong 5 phòng thi chuyên biệt để bắt đầu làm bài:
+              Chọn 1 trong 5 phòng thi chuyên biệt để bắt đầu làm bài hoặc soạn câu hỏi:
             </h3>
-            <span className="text-xs text-slate-500 font-medium hidden sm:inline">
+            <span className="text-xs text-slate-500 font-medium hidden sm:inline font-sans">
               Tổng số câu hỏi trong ngân hàng: <strong>{questions.length} câu</strong>
             </span>
           </div>
@@ -297,6 +337,47 @@ export const ExamRoomHubModal: React.FC<ExamRoomHubModalProps> = ({
                       {room.subtitle}
                     </p>
 
+                    {/* TOP ACTION BUTTONS: PROMINENT & DIRECTLY VISIBLE (NO SCROLLING NEEDED) */}
+                    <div className="my-2.5 p-2 bg-white/95 rounded-xl border border-slate-200 shadow-2xs space-y-1.5 font-sans">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onSelectRoom(room.key, room.defaultMinutes, selectedClassId, selectedStudentId, true)
+                          }
+                          className="flex-1 py-2 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-black flex items-center justify-center gap-1 shadow-xs cursor-pointer transition-all active:scale-95"
+                          title="Thêm câu hỏi mới vào phòng thi này"
+                        >
+                          <Plus className="w-3.5 h-3.5 text-white" />
+                          <span>Thêm câu hỏi mới</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onSelectRoom(room.key, room.defaultMinutes, selectedClassId, selectedStudentId, true)
+                          }
+                          className="py-2 px-2.5 bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 rounded-lg text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                          title="Soạn & Hiệu chỉnh câu hỏi trong phòng này"
+                        >
+                          <Edit3 className="w-3.5 h-3.5 text-amber-800" />
+                          <span>Soạn/Sửa đề</span>
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onSelectRoom(room.key, room.defaultMinutes, selectedClassId, selectedStudentId, false)
+                        }
+                        className="w-full py-1.5 px-3 bg-[#0878C9] hover:bg-[#073B66] text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                        title="Vào phòng thi làm bài trực tuyến như học sinh"
+                      >
+                        <Play className="w-3 h-3 fill-white" />
+                        <span>Vào phòng thi ({room.defaultMinutes} phút)</span>
+                      </button>
+                    </div>
+
                     {/* Description */}
                     <p className="text-xs text-slate-600 leading-relaxed line-clamp-3 mb-3">
                       {room.description}
@@ -322,15 +403,26 @@ export const ExamRoomHubModal: React.FC<ExamRoomHubModalProps> = ({
                   </div>
 
                   {/* Room Action Buttons */}
-                  <div className="pt-3 border-t border-slate-200/80 flex items-center gap-2">
+                  <div className="pt-3 border-t border-slate-200/80 flex flex-wrap items-center gap-2">
                     <button
                       onClick={() =>
-                        onSelectRoom(room.key, room.defaultMinutes, selectedClassId, selectedStudentId)
+                        onSelectRoom(room.key, room.defaultMinutes, selectedClassId, selectedStudentId, false)
                       }
-                      className="flex-1 py-2.5 px-3 bg-[#0878C9] hover:bg-[#073B66] text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer group-hover:shadow-md"
+                      className="flex-1 min-w-[120px] py-2.5 px-3 bg-[#0878C9] hover:bg-[#073B66] text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer group-hover:shadow-md"
                     >
                       <Play className="w-3.5 h-3.5 fill-white" />
-                      Vào phòng thi ({room.defaultMinutes}p)
+                      Vào thi ({room.defaultMinutes}p)
+                    </button>
+
+                    <button
+                      onClick={() =>
+                        onSelectRoom(room.key, room.defaultMinutes, selectedClassId, selectedStudentId, true)
+                      }
+                      className="py-2.5 px-3 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold flex items-center justify-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                      title="Thêm câu hỏi mới hoặc hiệu chỉnh đề thi trong phòng này"
+                    >
+                      <Plus className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Thêm câu hỏi</span>
                     </button>
                   </div>
                 </div>
@@ -361,6 +453,40 @@ export const ExamRoomHubModal: React.FC<ExamRoomHubModalProps> = ({
                   Kết hợp cả 5 phân hệ kiến thức Lịch sử
                 </p>
 
+                {/* TOP ACTION BUTTONS FOR CARD 6 */}
+                <div className="my-2.5 p-2 bg-white/95 rounded-xl border border-indigo-200 shadow-2xs space-y-1.5 font-sans">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => onSelectRoom('all', 45, selectedClassId, selectedStudentId, true)}
+                      className="flex-1 py-2 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-black flex items-center justify-center gap-1 shadow-xs cursor-pointer transition-all active:scale-95"
+                      title="Thêm câu hỏi mới vào đề tổng hợp"
+                    >
+                      <Plus className="w-3.5 h-3.5 text-white" />
+                      <span>Thêm câu hỏi mới</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => onSelectRoom('all', 45, selectedClassId, selectedStudentId, true)}
+                      className="py-2 px-2.5 bg-indigo-100 hover:bg-indigo-200 text-indigo-950 border border-indigo-300 rounded-lg text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                      title="Soạn & Sửa đề thi tổng hợp"
+                    >
+                      <Edit3 className="w-3.5 h-3.5 text-indigo-800" />
+                      <span>Soạn/Sửa đề</span>
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => onSelectRoom('all', 45, selectedClassId, selectedStudentId, false)}
+                    className="w-full py-1.5 px-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                  >
+                    <Play className="w-3 h-3 fill-white" />
+                    <span>Vào thi tổng hợp (45 phút)</span>
+                  </button>
+                </div>
+
                 <p className="text-xs text-slate-600 leading-relaxed line-clamp-3 mb-3">
                   Kiểm tra toàn diện cả trắc nghiệm đơn, trắc nghiệm đúng sai ngữ liệu, bài tập điền từ, ghép đôi sự kiện và viết bài tự luận.
                 </p>
@@ -383,13 +509,22 @@ export const ExamRoomHubModal: React.FC<ExamRoomHubModalProps> = ({
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-indigo-200/80">
+              <div className="pt-3 border-t border-indigo-200/80 flex flex-wrap items-center gap-2">
                 <button
-                  onClick={() => onSelectRoom('all', 45, selectedClassId, selectedStudentId)}
-                  className="w-full py-2.5 px-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer group-hover:shadow-md"
+                  onClick={() => onSelectRoom('all', 45, selectedClassId, selectedStudentId, false)}
+                  className="flex-1 min-w-[140px] py-2.5 px-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer group-hover:shadow-md"
                 >
                   <Play className="w-3.5 h-3.5 fill-white" />
-                  Vào thi tổng hợp (45 phút)
+                  Vào thi tổng hợp (45p)
+                </button>
+
+                <button
+                  onClick={() => onSelectRoom('all', 45, selectedClassId, selectedStudentId, true)}
+                  className="py-2.5 px-3 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold flex items-center justify-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                  title="Thêm câu hỏi mới vào đề tổng hợp"
+                >
+                  <Plus className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Thêm câu hỏi</span>
                 </button>
               </div>
             </div>

@@ -41,6 +41,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { ExamRoomHubModal, ExamRoomKey } from './ExamRoomHubModal';
+import { HistoryGamesHubModal } from '../history-games/HistoryGamesHubModal';
 
 export const QuestionBank: React.FC = () => {
   const { questions, addQuestion, updateQuestion, deleteQuestion } = useApp();
@@ -61,6 +62,8 @@ export const QuestionBank: React.FC = () => {
   const [isStudentExamModalOpen, setIsStudentExamModalOpen] = useState(false);
   const [isExamRoomHubOpen, setIsExamRoomHubOpen] = useState(false);
   const [selectedRoomMode, setSelectedRoomMode] = useState<ExamRoomKey>('all');
+  const [examModalInitialTeacherMode, setExamModalInitialTeacherMode] = useState(true);
+  const [isHistoryGamesModalOpen, setIsHistoryGamesModalOpen] = useState(false);
   const [isAutoScore10, setIsAutoScore10] = useState(true);
 
   // Quick single-question paste inside Add modal
@@ -550,6 +553,19 @@ export const QuestionBank: React.FC = () => {
             </span>
           </button>
 
+          {/* Trò Chơi Lịch Sử Tương Tác (3 Game: Vòng Quay • Lật Thẻ • Dòng Thời Gian) */}
+          <button
+            onClick={() => setIsHistoryGamesModalOpen(true)}
+            className="px-4 py-2 bg-gradient-to-r from-purple-600 via-indigo-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-xl text-xs font-black flex items-center gap-2 shadow-md hover:shadow-lg transition-all cursor-pointer border border-purple-300 ring-2 ring-purple-400/30"
+            title="Mở Không gian 3 Trò chơi Lịch sử Tương tác: Vòng quay may mắn, Lật thẻ ghi nhớ, Dòng thời gian (Hỗ trợ chiếu TV lớp học)"
+          >
+            <Sparkles className="w-4 h-4 text-amber-200" />
+            <span>Trò Chơi Lịch Sử Tương Tác</span>
+            <span className="bg-white/25 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+              3 Game • Chiếu Lớp
+            </span>
+          </button>
+
           {selectedQuestionIds.length > 0 && (
             <button
               onClick={() => setIsBuildExamModalOpen(true)}
@@ -589,6 +605,7 @@ export const QuestionBank: React.FC = () => {
           <button
             onClick={() => {
               setSelectedRoomMode('Trắc nghiệm đơn');
+              setExamModalInitialTeacherMode(true);
               setIsStudentExamModalOpen(true);
             }}
             className="px-3 py-1.5 rounded-xl bg-white hover:bg-blue-50 border border-blue-200 hover:border-blue-400 text-blue-900 text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer transition-all active:scale-95"
@@ -603,6 +620,7 @@ export const QuestionBank: React.FC = () => {
           <button
             onClick={() => {
               setSelectedRoomMode('Trắc nghiệm đúng sai');
+              setExamModalInitialTeacherMode(true);
               setIsStudentExamModalOpen(true);
             }}
             className="px-3 py-1.5 rounded-xl bg-white hover:bg-amber-50 border border-amber-200 hover:border-amber-400 text-amber-950 text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer transition-all active:scale-95"
@@ -617,6 +635,7 @@ export const QuestionBank: React.FC = () => {
           <button
             onClick={() => {
               setSelectedRoomMode('Điền từ');
+              setExamModalInitialTeacherMode(true);
               setIsStudentExamModalOpen(true);
             }}
             className="px-3 py-1.5 rounded-xl bg-white hover:bg-emerald-50 border border-emerald-200 hover:border-emerald-400 text-emerald-950 text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer transition-all active:scale-95"
@@ -631,6 +650,7 @@ export const QuestionBank: React.FC = () => {
           <button
             onClick={() => {
               setSelectedRoomMode('Nối từ');
+              setExamModalInitialTeacherMode(true);
               setIsStudentExamModalOpen(true);
             }}
             className="px-3 py-1.5 rounded-xl bg-white hover:bg-purple-50 border border-purple-200 hover:border-purple-400 text-purple-950 text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer transition-all active:scale-95"
@@ -645,6 +665,7 @@ export const QuestionBank: React.FC = () => {
           <button
             onClick={() => {
               setSelectedRoomMode('Tự luận');
+              setExamModalInitialTeacherMode(true);
               setIsStudentExamModalOpen(true);
             }}
             className="px-3 py-1.5 rounded-xl bg-white hover:bg-rose-50 border border-rose-200 hover:border-rose-400 text-rose-950 text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer transition-all active:scale-95"
@@ -2182,8 +2203,9 @@ D. Những dự đoán của con người...
       <ExamRoomHubModal
         isOpen={isExamRoomHubOpen}
         onClose={() => setIsExamRoomHubOpen(false)}
-        onSelectRoom={(roomKey, durationMinutes, classId, studentId) => {
+        onSelectRoom={(roomKey, durationMinutes, classId, studentId, isTeacherMode) => {
           setSelectedRoomMode(roomKey);
+          setExamModalInitialTeacherMode(!!isTeacherMode);
           setIsExamRoomHubOpen(false);
           setIsStudentExamModalOpen(true);
         }}
@@ -2192,8 +2214,12 @@ D. Những dự đoán của con người...
       {/* Modal: Phòng Thi Trực Tuyến Học Sinh (5 dạng câu & Đếm ngược thời gian) */}
       <StudentExamRoomModal
         isOpen={isStudentExamModalOpen}
-        onClose={() => setIsStudentExamModalOpen(false)}
+        onClose={() => {
+          setIsStudentExamModalOpen(false);
+          setExamModalInitialTeacherMode(false);
+        }}
         roomMode={selectedRoomMode}
+        initialTeacherMode={examModalInitialTeacherMode}
         examTitle={
           selectedQuestionIds.length > 0
             ? `Bài thi trực tuyến (${selectedQuestionIds.length} câu tuyển chọn) - Môn Lịch sử`
@@ -2201,6 +2227,13 @@ D. Những dự đoán của con người...
         }
         initialQuestions={selectedQuestionIds.length > 0 ? selectedQuestions : undefined}
         defaultDurationMinutes={45}
+      />
+
+      {/* Modal: Không Gian Trò Chơi Lịch Sử Tương Tác (3 Game) */}
+      <HistoryGamesHubModal
+        isOpen={isHistoryGamesModalOpen}
+        onClose={() => setIsHistoryGamesModalOpen(false)}
+        bankQuestions={questions}
       />
     </div>
   );

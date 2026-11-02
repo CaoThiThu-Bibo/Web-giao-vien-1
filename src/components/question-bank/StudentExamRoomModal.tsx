@@ -41,6 +41,10 @@ import {
   ShieldCheck,
   ChevronDown,
   ChevronUp,
+  Plus,
+  Trash2,
+  Edit3,
+  Check,
 } from 'lucide-react';
 
 export interface StudentExamRoomModalProps {
@@ -52,6 +56,7 @@ export interface StudentExamRoomModalProps {
   initialClassId?: string;
   initialStudentId?: string;
   roomMode?: ExamRoomKey;
+  initialTeacherMode?: boolean;
 }
 
 export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
@@ -63,13 +68,33 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
   initialClassId,
   initialStudentId,
   roomMode = 'all',
+  initialTeacherMode = true,
 }) => {
-  const { classes, students, questions: bankQuestions, updateStudentScore, exams, addExam } = useApp();
+  const {
+    classes,
+    students,
+    questions: bankQuestions,
+    updateStudentScore,
+    exams,
+    addExam,
+    addQuestion,
+    updateQuestion,
+    deleteQuestion,
+  } = useApp();
 
   // -------------------------------------------------------------------------
   // 1. ACTIVE ROOM MODE STATE & SWITCHER
   // -------------------------------------------------------------------------
   const [activeRoomMode, setActiveRoomMode] = useState<ExamRoomKey>(roomMode);
+  const [isTeacherMode, setIsTeacherMode] = useState<boolean>(initialTeacherMode);
+  const [editingCardId, setEditingCardId] = useState<string | null>(null);
+  const [savedQuestionStatus, setSavedQuestionStatus] = useState<Record<string, string>>({});
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
 
   useEffect(() => {
     if (roomMode) {
@@ -77,12 +102,16 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
     }
   }, [roomMode]);
 
+  useEffect(() => {
+    if (initialTeacherMode !== undefined) {
+      setIsTeacherMode(initialTeacherMode);
+    }
+  }, [initialTeacherMode]);
+
   // Merge bank questions and standard graduation questions for rich availability
   const combinedQuestionPool = useMemo(() => {
     const map = new Map<string, Question>();
-    // First, user bank questions
     bankQuestions.forEach((q) => map.set(q.id, q));
-    // Second, standard graduation exam questions
     standardGraduationExamQuestions.forEach((q) => {
       if (!map.has(q.id)) {
         map.set(q.id, q);
@@ -91,10 +120,8 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
     return Array.from(map.values());
   }, [bankQuestions]);
 
-  // -------------------------------------------------------------------------
-  // 2. QUESTIONS FILTERING FOR THE CURRENT ROOM
-  // -------------------------------------------------------------------------
-  const examQuestions: Question[] = useMemo(() => {
+  // Initial questions for current room
+  const baseQuestionsForRoom: Question[] = useMemo(() => {
     if (initialQuestions && initialQuestions.length > 0 && activeRoomMode === 'all') {
       return initialQuestions;
     }
@@ -137,6 +164,16 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
     return merged.length > 0 ? merged : combinedQuestionPool.slice(0, 12);
   }, [initialQuestions, combinedQuestionPool, activeRoomMode]);
 
+  // MUTABLE ROOM QUESTIONS (Allows adding, editing, saving, deleting in room)
+  const [roomQuestions, setRoomQuestions] = useState<Question[]>([]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setRoomQuestions(baseQuestionsForRoom);
+      setSavedQuestionStatus({});
+    }
+  }, [isOpen, activeRoomMode, baseQuestionsForRoom]);
+
   // Dynamic Room Title
   const computedRoomTitle = useMemo(() => {
     switch (activeRoomMode) {
@@ -156,7 +193,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
   }, [activeRoomMode, examTitle]);
 
   // -------------------------------------------------------------------------
-  // 3. STUDENT & CLASS STATE
+  // 2. STUDENT & CLASS STATE
   // -------------------------------------------------------------------------
   const [selectedClassId, setSelectedClassId] = useState<string>(
     initialClassId || classes[0]?.id || ''
@@ -181,7 +218,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
   );
 
   // -------------------------------------------------------------------------
-  // 4. DISPLAY OPTIONS & ACCESSIBILITY (FONT, THEME, VIEW MODE)
+  // 3. DISPLAY OPTIONS & ACCESSIBILITY (FONT, THEME, VIEW MODE)
   // -------------------------------------------------------------------------
   const [displayMode, setDisplayMode] = useState<'scroll' | 'single'>('single');
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -201,7 +238,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
   };
 
   // -------------------------------------------------------------------------
-  // 5. TIMER & TIME MANAGEMENT ENGINE
+  // 4. TIMER & TIME MANAGEMENT ENGINE
   // -------------------------------------------------------------------------
   const getRoomDefaultMinutes = (mode: ExamRoomKey): number => {
     switch (mode) {
@@ -285,48 +322,23 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
 
   const handleAddExtraTime = (extraMinutes: number) => {
     setSecondsRemaining((prev) => prev + extraMinutes * 60);
-    alert(`Đã cộng thêm ${extraMinutes} phút làm bài cho học sinh!`);
+    showToast(`Đã cộng thêm ${extraMinutes} phút làm bài cho học sinh!`);
   };
 
   // -------------------------------------------------------------------------
-  // 6. STUDENT ANSWERS & SPECIALIZED INTERACTION STATE
+  // 5. STUDENT ANSWERS & SPECIALIZED INTERACTION STATE
   // -------------------------------------------------------------------------
-  // Single choice: questionId -> 'A' | 'B' | 'C' | 'D'
   const [singleAnswers, setSingleAnswers] = useState<Record<string, string>>({});
-
-  // True/False: questionId -> { a?: boolean, b?: boolean, c?: boolean, d?: boolean }
   const [tfAnswers, setTfAnswers] = useState<
     Record<string, Record<'a' | 'b' | 'c' | 'd', boolean | undefined>>
   >({});
-
-  // Highlighting tool for True/False stimulus text
   const [highlighterColor, setHighlighterColor] = useState<'yellow' | 'cyan' | 'none'>('yellow');
-  const [highlightedKeywords, setHighlightedKeywords] = useState<Record<string, string[]>>({});
-
-  const toggleHighlightKeyword = (qId: string, word: string) => {
-    setHighlightedKeywords((prev) => {
-      const cur = prev[qId] || [];
-      return {
-        ...prev,
-        [qId]: cur.includes(word) ? cur.filter((w) => w !== word) : [...cur, word],
-      };
-    });
-  };
-
-  // Fill in the blank: questionId -> Record<blankLabel, word>
   const [blankAnswers, setBlankAnswers] = useState<Record<string, Record<string, string>>>({});
   const [activeBlankSlot, setActiveBlankSlot] = useState<{ qId: string; blankLabel: string } | null>(null);
-
-  // Matching: questionId -> Record<pairId, matchedKey>
   const [matchingAnswers, setMatchingAnswers] = useState<Record<string, Record<string, string>>>({});
-  const [selectedLeftMatch, setSelectedLeftMatch] = useState<{ qId: string; pairId: string } | null>(null);
-
-  // Essay: questionId -> essay text
   const [essayAnswers, setEssayAnswers] = useState<Record<string, string>>({});
   const [lastAutoSavedTime, setLastAutoSavedTime] = useState<string>('Vừa mới lưu');
   const [aiFeedbackMap, setAiFeedbackMap] = useState<Record<string, { score: number; comment: string }>>({});
-
-  // Flagged for review
   const [flaggedQuestionIds, setFlaggedQuestionIds] = useState<string[]>([]);
 
   const toggleFlagQuestion = (qId: string) => {
@@ -375,11 +387,274 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
   };
 
   const answeredCount = useMemo(() => {
-    return examQuestions.filter(isQuestionAnswered).length;
-  }, [examQuestions, singleAnswers, tfAnswers, blankAnswers, matchingAnswers, essayAnswers]);
+    return roomQuestions.filter(isQuestionAnswered).length;
+  }, [roomQuestions, singleAnswers, tfAnswers, blankAnswers, matchingAnswers, essayAnswers]);
 
   // -------------------------------------------------------------------------
-  // 7. SCORING & PEDAGOGICAL EVALUATION ENGINE (ROOM-SPECIFIC SCALED TO 10.0)
+  // 6. QUESTION CREATION & EDITING HELPERS FOR TEACHER
+  // -------------------------------------------------------------------------
+  // Add a brand new question tailored to the active room
+  const handleAddNewQuestionToRoom = () => {
+    const newId = `q_custom_${Date.now()}`;
+    const today = new Date().toISOString().split('T')[0];
+    let newQ: Question;
+
+    if (activeRoomMode === 'Trắc nghiệm đơn') {
+      newQ = {
+        id: newId,
+        grade: 12,
+        topic: 'Lịch sử Việt Nam trọng tâm',
+        lesson: 'Bài ôn tập GDTX',
+        knowledgeDomain: 'Kiến thức cốt lõi',
+        type: 'Trắc nghiệm đơn',
+        cognitiveLevel: 'Nhận biết',
+        content: `Câu hỏi trắc nghiệm mới số ${roomQuestions.length + 1}: Nhập nội dung câu hỏi tại đây...`,
+        options: [
+          'A. Phương án lựa chọn A',
+          'B. Phương án lựa chọn B',
+          'C. Phương án lựa chọn C',
+          'D. Phương án lựa chọn D',
+        ],
+        correctAnswer: 'A',
+        explanation: 'Căn cứ vào SGK Lịch sử GDPT 2018 và hướng dẫn ôn tập GDTX.',
+        source: 'Cô Cao Thị Thu biên soạn',
+        author: 'Cao Thị Thu',
+        updatedAt: today,
+      };
+    } else if (activeRoomMode === 'Trắc nghiệm đúng sai') {
+      newQ = {
+        id: newId,
+        grade: 12,
+        topic: 'Phân tích tư liệu Lịch sử',
+        lesson: 'Bài ôn tập tư liệu chuẩn Bộ 2025',
+        knowledgeDomain: 'Đọc hiểu và đánh giá sử liệu',
+        type: 'Trắc nghiệm đúng sai',
+        cognitiveLevel: 'Thông hiểu',
+        content: `Đọc đoạn tư liệu sau đây:\n"Nhập đoạn trích văn kiện, lời kêu gọi hoặc sự kiện lịch sử tại đây..."`,
+        trueFalseStatements: [
+          { id: 'a', statement: 'Nội dung nhận định ý a...', isCorrect: true },
+          { id: 'b', statement: 'Nội dung nhận định ý b...', isCorrect: true },
+          { id: 'c', statement: 'Nội dung nhận định ý c...', isCorrect: false },
+          { id: 'd', statement: 'Nội dung nhận định ý d...', isCorrect: true },
+        ],
+        correctAnswer: 'a-ĐÚNG, b-ĐÚNG, c-SAI, d-ĐÚNG',
+        explanation: 'Căn cứ vào văn bản tư liệu lịch sử trích dẫn.',
+        source: 'Cô Cao Thị Thu biên soạn',
+        author: 'Cao Thị Thu',
+        updatedAt: today,
+      };
+    } else if (activeRoomMode === 'Điền từ') {
+      newQ = {
+        id: newId,
+        grade: 12,
+        topic: 'Thuật ngữ & Niên đại',
+        lesson: 'Ôn tập GDTX',
+        knowledgeDomain: 'Sự kiện và nhân vật',
+        type: 'Điền từ',
+        cognitiveLevel: 'Thông hiểu',
+        content: `Điền các cụm từ thích hợp vào chỗ trống [1], [2] trong đoạn văn sau:\n\n"Năm [1], cuộc khởi nghĩa đã diễn ra tại [2] thắng lợi."`,
+        wordBank: ['1945', 'Hà Nội', '1954', 'Điện Biên Phủ'],
+        blankItems: [
+          { id: 1, blankLabel: '[1]', correctWord: '1945' },
+          { id: 2, blankLabel: '[2]', correctWord: 'Hà Nội' },
+        ],
+        correctAnswer: '[1] 1945; [2] Hà Nội',
+        explanation: 'Ghi nhớ chuẩn xác mốc lịch sử.',
+        source: 'Cô Cao Thị Thu biên soạn',
+        author: 'Cao Thị Thu',
+        updatedAt: today,
+      };
+    } else if (activeRoomMode === 'Nối từ') {
+      newQ = {
+        id: newId,
+        grade: 12,
+        topic: 'Tiến trình lịch sử',
+        lesson: 'Ôn tập GDTX',
+        knowledgeDomain: 'Ghép nối nhân quả',
+        type: 'Nối từ',
+        cognitiveLevel: 'Vận dụng',
+        content: 'Nối mốc thời gian ở Cột A với sự kiện/ý nghĩa lịch sử ở Cột B:',
+        matchingPairs: [
+          { id: '1', left: '1. Mốc thời gian thứ nhất', right: 'A. Sự kiện lịch sử A', matchedKey: 'A' },
+          { id: '2', left: '2. Mốc thời gian thứ hai', right: 'B. Sự kiện lịch sử B', matchedKey: 'B' },
+        ],
+        correctAnswer: '1 - A; 2 - B',
+        explanation: 'Liên hệ đúng tiến trình sự kiện.',
+        source: 'Cô Cao Thị Thu biên soạn',
+        author: 'Cao Thị Thu',
+        updatedAt: today,
+      };
+    } else {
+      // Tự luận
+      newQ = {
+        id: newId,
+        grade: 12,
+        topic: 'Tự luận chuyên sâu',
+        lesson: 'Ôn tập GDTX',
+        knowledgeDomain: 'Vận dụng cao',
+        type: 'Tự luận',
+        cognitiveLevel: 'Vận dụng cao',
+        content: `Đề bài: Phân tích nguyên nhân thắng lợi và bài học lịch sử của sự kiện...`,
+        essayOutline: 'DÀN Ý GỢI Ý:\n1. Bối cảnh lịch sử (3.0đ)\n2. Ý nghĩa lịch sử (4.0đ)\n3. Bài học kinh nghiệm (3.0đ)',
+        rubricPoints: [
+          { criteria: 'Ý 1: Nêu đúng hoàn cảnh và bối cảnh lịch sử', points: 3.0 },
+          { criteria: 'Ý 2: Phân tích sâu sắc ý nghĩa lịch sử', points: 4.0 },
+          { criteria: 'Ý 3: Rút ra bài học kinh nghiệm liên hệ thực tế', points: 3.0 },
+        ],
+        correctAnswer: 'Trình bày đủ 3 ý theo dàn ý gợi ý.',
+        explanation: 'Lập luận mạch lạc, có dẫn chứng rõ ràng.',
+        source: 'Cô Cao Thị Thu biên soạn',
+        author: 'Cao Thị Thu',
+        updatedAt: today,
+      };
+    }
+
+    setRoomQuestions((prev) => [...prev, newQ]);
+    setEditingCardId(newId);
+    setIsTeacherMode(true);
+    setCurrentQuestionIndex(roomQuestions.length);
+    showToast(`Đã thêm Câu ${roomQuestions.length + 1} mới vào phòng! Cô có thể nhập nội dung và chọn đáp án.`);
+  };
+
+  // Update a question field in local roomQuestions
+  const handleUpdateQuestion = (qId: string, updates: Partial<Question>) => {
+    setRoomQuestions((prev) =>
+      prev.map((q) => (q.id === qId ? { ...q, ...updates } : q))
+    );
+  };
+
+  // Set correct answer for Single Choice
+  const handleSetSingleChoiceAnswer = (qId: string, letter: string) => {
+    setRoomQuestions((prev) =>
+      prev.map((q) => {
+        if (q.id !== qId) return q;
+        return { ...q, correctAnswer: letter.toUpperCase() };
+      })
+    );
+  };
+
+  // Update option text for Single Choice
+  const handleUpdateSingleChoiceOption = (
+    qId: string,
+    optIdx: number,
+    letter: string,
+    newText: string
+  ) => {
+    setRoomQuestions((prev) =>
+      prev.map((q) => {
+        if (q.id !== qId) return q;
+        const newOpts = [...(q.options || ['A. ', 'B. ', 'C. ', 'D. '])];
+        newOpts[optIdx] = `${letter}. ${newText}`;
+        return { ...q, options: newOpts };
+      })
+    );
+  };
+
+  // Toggle True/False statement
+  const handleToggleTfStatement = (qId: string, stmtIdx: number, isCorrect: boolean) => {
+    setRoomQuestions((prev) =>
+      prev.map((q) => {
+        if (q.id !== qId || !q.trueFalseStatements) return q;
+        const newStmts = q.trueFalseStatements.map((stmt, idx) =>
+          idx === stmtIdx ? { ...stmt, isCorrect } : stmt
+        );
+        const ansString = newStmts
+          .map((s) => `${s.id}-${s.isCorrect ? 'ĐÚNG' : 'SAI'}`)
+          .join(', ');
+        return {
+          ...q,
+          trueFalseStatements: newStmts,
+          correctAnswer: ansString,
+        };
+      })
+    );
+  };
+
+  // Update True/False statement text
+  const handleUpdateTfStatementText = (
+    qId: string,
+    stmtIdx: number,
+    statement: string
+  ) => {
+    setRoomQuestions((prev) =>
+      prev.map((q) => {
+        if (q.id !== qId || !q.trueFalseStatements) return q;
+        const newStmts = q.trueFalseStatements.map((stmt, idx) =>
+          idx === stmtIdx ? { ...stmt, statement } : stmt
+        );
+        return { ...q, trueFalseStatements: newStmts };
+      })
+    );
+  };
+
+  // Save an individual question
+  const handleSaveIndividualQuestion = (qId: string, idx: number) => {
+    const targetQ = roomQuestions.find((q) => q.id === qId);
+    if (!targetQ) return;
+
+    const now = new Date();
+    const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now
+      .getMinutes()
+      .toString()
+      .padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+
+    // Update in Bank Questions directly
+    if (bankQuestions.some((q) => q.id === targetQ.id)) {
+      updateQuestion(targetQ.id, targetQ);
+    } else {
+      addQuestion(targetQ);
+    }
+
+    setSavedQuestionStatus((prev) => ({
+      ...prev,
+      [qId]: timeStr,
+    }));
+    showToast(`Đã lưu thành công nội dung & đáp án Câu ${idx + 1}!`);
+  };
+
+  // Delete an individual question
+  const handleDeleteIndividualQuestion = (qId: string, idx: number) => {
+    if (confirm(`Cô có chắc chắn muốn xóa Câu ${idx + 1} khỏi phòng thi này không?`)) {
+      setRoomQuestions((prev) => prev.filter((q) => q.id !== qId));
+      if (bankQuestions.some((q) => q.id === qId)) {
+        deleteQuestion(qId);
+      }
+      showToast(`Đã xóa Câu ${idx + 1}.`);
+    }
+  };
+
+  // Sync / Save ALL room questions to Bank
+  const handleSyncAllToBank = () => {
+    if (roomQuestions.length === 0) return;
+    let added = 0;
+    let updated = 0;
+    roomQuestions.forEach((q) => {
+      if (bankQuestions.some((bq) => bq.id === q.id)) {
+        updateQuestion(q.id, q);
+        updated++;
+      } else {
+        addQuestion(q);
+        added++;
+      }
+    });
+
+    const now = new Date();
+    const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now
+      .getMinutes()
+      .toString()
+      .padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+
+    const newSavedMap: Record<string, string> = {};
+    roomQuestions.forEach((q) => {
+      newSavedMap[q.id] = timeStr;
+    });
+    setSavedQuestionStatus(newSavedMap);
+
+    showToast(`Đã lưu & đồng bộ thành công ${roomQuestions.length} câu vào Ngân hàng đề (${added} câu mới, ${updated} câu cập nhật)!`);
+  };
+
+  // -------------------------------------------------------------------------
+  // 7. SCORING & PEDAGOGICAL EVALUATION ENGINE
   // -------------------------------------------------------------------------
   interface SectionScoreDetail {
     type: QuestionType;
@@ -390,7 +665,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
   }
 
   const evaluationResult = useMemo(() => {
-    if (examQuestions.length === 0) {
+    if (roomQuestions.length === 0) {
       return {
         totalScore: 0,
         maxScore: 10,
@@ -401,18 +676,18 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
       };
     }
 
-    const singleQuestions = examQuestions.filter(
+    const singleQuestions = roomQuestions.filter(
       (q) => q.type === 'Trắc nghiệm đơn' || q.type === 'Trắc nghiệm'
     );
-    const tfQuestions = examQuestions.filter((q) => q.type === 'Trắc nghiệm đúng sai');
-    const blankQuestions = examQuestions.filter((q) => q.type === 'Điền từ');
-    const matchQuestions = examQuestions.filter((q) => q.type === 'Nối từ');
-    const essayQuestions = examQuestions.filter((q) => q.type === 'Tự luận');
+    const tfQuestions = roomQuestions.filter((q) => q.type === 'Trắc nghiệm đúng sai');
+    const blankQuestions = roomQuestions.filter((q) => q.type === 'Điền từ');
+    const matchQuestions = roomQuestions.filter((q) => q.type === 'Nối từ');
+    const essayQuestions = roomQuestions.filter((q) => q.type === 'Tự luận');
 
     let sectionBreakdown: SectionScoreDetail[] = [];
     let finalScore = 0;
 
-    // CASE 1: ROOM 1 - TRẮC NGHIỆM ĐƠN (Hệ 10.0 hoàn toàn)
+    // CASE 1: ROOM 1 - TRẮC NGHIỆM ĐƠN
     if (activeRoomMode === 'Trắc nghiệm đơn') {
       let singleCorrect = 0;
       singleQuestions.forEach((q) => {
@@ -427,13 +702,11 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
         score: finalScore,
         maxScore: 10.0,
         questionCount: singleQuestions.length,
-        details: `Đúng ${singleCorrect} / ${singleQuestions.length} câu (Mỗi câu = ${(
-          10 / (singleQuestions.length || 1)
-        ).toFixed(2)}đ)`,
+        details: `Đúng ${singleCorrect} / ${singleQuestions.length} câu`,
       });
     }
 
-    // CASE 2: ROOM 2 - ĐÚNG / SAI TƯ LIỆU (Barem bậc thang chuẩn Bộ GD&ĐT quy về hệ 10)
+    // CASE 2: ROOM 2 - ĐÚNG / SAI TƯ LIỆU
     else if (activeRoomMode === 'Trắc nghiệm đúng sai') {
       let rawTfPoints = 0;
       let maxRawTfPoints = tfQuestions.length * 1.0;
@@ -457,11 +730,11 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
         score: finalScore,
         maxScore: 10.0,
         questionCount: tfQuestions.length,
-        details: `Điểm bậc thang Bộ: ${rawTfPoints.toFixed(2)} / ${maxRawTfPoints.toFixed(2)}đ gốc -> Quy đổi hệ 10: ${finalScore.toFixed(2)}đ`,
+        details: `Barem bậc thang Bộ GD&ĐT: ${rawTfPoints.toFixed(2)}/${maxRawTfPoints.toFixed(2)}đ gốc -> Hệ 10: ${finalScore.toFixed(2)}đ`,
       });
     }
 
-    // CASE 3: ROOM 3 - ĐIỀN TỪ (Quy về hệ 10)
+    // CASE 3: ROOM 3 - ĐIỀN TỪ
     else if (activeRoomMode === 'Điền từ') {
       let blankCorrectTotal = 0;
       let blankSlotsTotal = 0;
@@ -483,13 +756,11 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
         score: finalScore,
         maxScore: 10.0,
         questionCount: blankQuestions.length,
-        details: `Đúng ${blankCorrectTotal} / ${blankSlotsTotal} vị trí khuyết (Mỗi vị trí = ${(
-          10 / (blankSlotsTotal || 1)
-        ).toFixed(2)}đ)`,
+        details: `Đúng ${blankCorrectTotal} / ${blankSlotsTotal} vị trí khuyết`,
       });
     }
 
-    // CASE 4: ROOM 4 - GHÉP ĐÔI / NỐI TỪ (Quy về hệ 10)
+    // CASE 4: ROOM 4 - GHÉP ĐÔI / NỐI TỪ
     else if (activeRoomMode === 'Nối từ') {
       let matchCorrectTotal = 0;
       let matchPairsTotal = 0;
@@ -510,11 +781,11 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
         score: finalScore,
         maxScore: 10.0,
         questionCount: matchQuestions.length,
-        details: `Ghép đúng ${matchCorrectTotal} / ${matchPairsTotal} cặp sự kiện logic`,
+        details: `Ghép đúng ${matchCorrectTotal} / ${matchPairsTotal} cặp sự kiện`,
       });
     }
 
-    // CASE 5: ROOM 5 - TỰ LUẬN (Quy về hệ 10)
+    // CASE 5: ROOM 5 - TỰ LUẬN
     else if (activeRoomMode === 'Tự luận') {
       let essayTotal = 0;
       essayQuestions.forEach((q) => {
@@ -527,7 +798,6 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
         else if (wordCount > 15) qScore = 4.5;
         else qScore = 2.0;
 
-        // If AI feedback exists, prefer it
         if (aiFeedbackMap[q.id]) {
           qScore = aiFeedbackMap[q.id].score;
         }
@@ -638,7 +908,6 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
 
     finalScore = Math.min(10.0, Math.max(0, Math.round(finalScore * 100) / 100));
 
-    // Evaluation Comment
     let evaluationLevel: EvaluationLevel = 'Chưa đạt';
     let evaluationText = '';
     let pedagogicalComment = '';
@@ -674,7 +943,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
       pedagogicalComment,
     };
   }, [
-    examQuestions,
+    roomQuestions,
     singleAnswers,
     tfAnswers,
     blankAnswers,
@@ -739,23 +1008,23 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
     setTimeout(() => setSaveSuccessMsg(null), 4000);
   };
 
-  // Keyboard shortcut listener for Single Choice Room
+  // Keyboard shortcut listener for Single Choice Room (when not typing in textarea)
   useEffect(() => {
-    if (!isOpen || isSubmitted || displayMode !== 'single') return;
+    if (!isOpen || isSubmitted || displayMode !== 'single' || isTeacherMode) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) {
         return;
       }
 
-      const activeQ = examQuestions[currentQuestionIndex];
+      const activeQ = roomQuestions[currentQuestionIndex];
       if (!activeQ) return;
 
       const key = e.key.toUpperCase();
       if (['A', 'B', 'C', 'D'].includes(key) && (activeQ.type === 'Trắc nghiệm đơn' || activeQ.type === 'Trắc nghiệm')) {
         setSingleAnswers((prev) => ({ ...prev, [activeQ.id]: key }));
       } else if (e.key === 'ArrowRight' || e.key === 'PageDown') {
-        if (currentQuestionIndex < examQuestions.length - 1) {
+        if (currentQuestionIndex < roomQuestions.length - 1) {
           setCurrentQuestionIndex((prev) => prev + 1);
         }
       } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
@@ -767,7 +1036,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, isSubmitted, displayMode, currentQuestionIndex, examQuestions]);
+  }, [isOpen, isSubmitted, displayMode, currentQuestionIndex, roomQuestions, isTeacherMode]);
 
   if (!isOpen) return null;
 
@@ -796,6 +1065,14 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
       ref={modalContainerRef}
       className={`fixed inset-0 z-50 flex flex-col overflow-hidden ${themeClasses} font-serif`}
     >
+      {/* Floating Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 bg-[#073B66] text-white px-4 py-2.5 rounded-2xl shadow-xl border border-sky-400 flex items-center gap-2.5 text-xs font-bold animate-in slide-in-from-bottom-3 duration-200 font-sans">
+          <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
       {/* ------------------------------------------------------------------- */}
       {/* 1. TOP STICKY HEADER: EXAM INFO, ROOM SWITCHER & CONTROLS           */}
       {/* ------------------------------------------------------------------- */}
@@ -860,10 +1137,44 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
             </div>
           </div>
 
-          {/* Right: Accessibility Controls & Actions */}
+          {/* Right: Teacher Actions (Add Question, Sync to Bank, Toggle Edit Mode) */}
           <div className="flex items-center gap-2 font-sans">
+            {/* BUTTON 1: THÊM CÂU HỎI MỚI VÀO PHÒNG NÀY */}
+            <button
+              onClick={handleAddNewQuestionToRoom}
+              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm cursor-pointer transition-all active:scale-95"
+              title="Thêm một câu hỏi mới trực tiếp vào phòng thi này"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Thêm câu hỏi mới</span>
+            </button>
+
+            {/* BUTTON 2: LƯU & NHẬP TẤT CẢ VÀO NGÂN HÀNG ĐỀ */}
+            <button
+              onClick={handleSyncAllToBank}
+              className="px-3.5 py-1.5 bg-[#073B66] hover:bg-[#0878C9] text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm cursor-pointer transition-all"
+              title="Lưu và nhập toàn bộ câu hỏi của phòng này vào Ngân hàng đề thi"
+            >
+              <Save className="w-3.5 h-3.5 text-amber-300" />
+              <span>Lưu & Nhập tất cả {roomQuestions.length} câu vào Ngân hàng đề</span>
+            </button>
+
+            {/* BUTTON 3: TOGGLE TEACHER EDIT MODE */}
+            <button
+              onClick={() => setIsTeacherMode(!isTeacherMode)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
+                isTeacherMode
+                  ? 'bg-amber-100 border-amber-400 text-amber-950 font-black shadow-xs ring-2 ring-amber-300'
+                  : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200'
+              }`}
+              title="Bật/Tắt chế độ Giáo viên Soạn & Sửa đề thi trực tiếp"
+            >
+              <Edit3 className="w-3.5 h-3.5 text-amber-700" />
+              <span>{isTeacherMode ? 'Đang Soạn/Sửa đề' : 'Chế độ Sửa đề'}</span>
+            </button>
+
             {/* View Mode Toggle */}
-            <div className="hidden md:flex items-center bg-slate-100 dark:bg-slate-800 rounded-xl p-0.5 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+            <div className="hidden lg:flex items-center bg-slate-100 dark:bg-slate-800 rounded-xl p-0.5 border border-slate-200 dark:border-slate-700 text-xs font-bold">
               <button
                 onClick={() => setDisplayMode('single')}
                 className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
@@ -888,35 +1199,6 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
               </button>
             </div>
 
-            {/* Font Size Selector */}
-            <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-xl p-0.5 border border-slate-200 dark:border-slate-700 text-xs">
-              <button
-                onClick={() =>
-                  setFontSize((prev) =>
-                    prev === 'xl' ? 'lg' : prev === 'lg' ? 'md' : 'sm'
-                  )
-                }
-                className="p-1.5 hover:bg-white dark:hover:bg-slate-700 rounded-lg cursor-pointer transition-colors"
-                title="Giảm cỡ chữ"
-              >
-                <Type className="w-3.5 h-3.5" />
-              </button>
-              <span className="px-1.5 font-bold uppercase text-[10px] text-slate-600 dark:text-slate-300">
-                {fontSize}
-              </span>
-              <button
-                onClick={() =>
-                  setFontSize((prev) =>
-                    prev === 'sm' ? 'md' : prev === 'md' ? 'lg' : 'xl'
-                  )
-                }
-                className="p-1.5 hover:bg-white dark:hover:bg-slate-700 rounded-lg cursor-pointer transition-colors font-bold"
-                title="Tăng cỡ chữ"
-              >
-                A+
-              </button>
-            </div>
-
             {/* Theme switcher */}
             <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-xl p-0.5 border border-slate-200 dark:border-slate-700 text-xs">
               <button
@@ -926,7 +1208,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                     ? 'bg-[#F5EEDC] text-amber-900 shadow-2xs'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
-                title="Màu ấm Sepia (Bảo vệ mắt)"
+                title="Màu ấm Sepia"
               >
                 <Sun className="w-3.5 h-3.5 text-amber-600" />
               </button>
@@ -937,7 +1219,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                     ? 'bg-white text-slate-900 shadow-2xs'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
-                title="Giao diện Trắng tiêu chuẩn"
+                title="Trắng tiêu chuẩn"
               >
                 <div className="w-3.5 h-3.5 rounded-full border border-slate-400 bg-white" />
               </button>
@@ -948,7 +1230,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                     ? 'bg-slate-700 text-sky-300 shadow-2xs'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
-                title="Chế độ Tối (Ban đêm)"
+                title="Chế độ Tối"
               >
                 <Moon className="w-3.5 h-3.5 text-indigo-400" />
               </button>
@@ -958,13 +1240,9 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
             <button
               onClick={toggleFullscreen}
               className="p-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl text-slate-600 dark:text-slate-300 cursor-pointer transition-colors"
-              title="Bật/Tắt toàn màn hình"
+              title="Toàn màn hình"
             >
-              {isFullscreen ? (
-                <Minimize className="w-4 h-4" />
-              ) : (
-                <Maximize className="w-4 h-4" />
-              )}
+              {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
             </button>
 
             {/* Close */}
@@ -981,105 +1259,150 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
         {/* ----------------------------------------------------------------- */}
         {/* ROOM SELECTOR QUICK-SWITCH BAR                                    */}
         {/* ----------------------------------------------------------------- */}
-        <div className="flex items-center gap-1.5 overflow-x-auto py-1 font-sans border-t border-slate-200/60 dark:border-slate-700/60 text-xs">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider shrink-0 mr-1">
-            Chuyển phòng:
-          </span>
+        <div className="flex items-center justify-between gap-2 overflow-x-auto py-1 font-sans border-t border-slate-200/60 dark:border-slate-700/60 text-xs">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider shrink-0 mr-1">
+              Phòng thi:
+            </span>
 
-          <button
-            onClick={() => setActiveRoomMode('Trắc nghiệm đơn')}
-            className={`px-3 py-1 rounded-xl font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1.5 ${
-              activeRoomMode === 'Trắc nghiệm đơn'
-                ? 'bg-blue-600 text-white shadow-xs'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5" />
-            Phòng 1: Trắc nghiệm đơn
-          </button>
+            <button
+              onClick={() => setActiveRoomMode('Trắc nghiệm đơn')}
+              className={`px-3 py-1 rounded-xl font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeRoomMode === 'Trắc nghiệm đơn'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              Phòng 1: Trắc nghiệm đơn
+            </button>
 
-          <button
-            onClick={() => setActiveRoomMode('Trắc nghiệm đúng sai')}
-            className={`px-3 py-1 rounded-xl font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1.5 ${
-              activeRoomMode === 'Trắc nghiệm đúng sai'
-                ? 'bg-amber-600 text-white shadow-xs'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
-            }`}
-          >
-            <FileText className="w-3.5 h-3.5" />
-            Phòng 2: Đúng / Sai tư liệu
-          </button>
+            <button
+              onClick={() => setActiveRoomMode('Trắc nghiệm đúng sai')}
+              className={`px-3 py-1 rounded-xl font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeRoomMode === 'Trắc nghiệm đúng sai'
+                  ? 'bg-amber-600 text-white shadow-xs'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              Phòng 2: Đúng / Sai tư liệu
+            </button>
 
-          <button
-            onClick={() => setActiveRoomMode('Điền từ')}
-            className={`px-3 py-1 rounded-xl font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1.5 ${
-              activeRoomMode === 'Điền từ'
-                ? 'bg-emerald-600 text-white shadow-xs'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
-            }`}
-          >
-            <CheckSquare className="w-3.5 h-3.5" />
-            Phòng 3: Điền từ
-          </button>
+            <button
+              onClick={() => setActiveRoomMode('Điền từ')}
+              className={`px-3 py-1 rounded-xl font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeRoomMode === 'Điền từ'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+              }`}
+            >
+              <CheckSquare className="w-3.5 h-3.5" />
+              Phòng 3: Điền từ
+            </button>
 
-          <button
-            onClick={() => setActiveRoomMode('Nối từ')}
-            className={`px-3 py-1 rounded-xl font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1.5 ${
-              activeRoomMode === 'Nối từ'
-                ? 'bg-purple-600 text-white shadow-xs'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
-            }`}
-          >
-            <ArrowRightLeft className="w-3.5 h-3.5" />
-            Phòng 4: Ghép đôi
-          </button>
+            <button
+              onClick={() => setActiveRoomMode('Nối từ')}
+              className={`px-3 py-1 rounded-xl font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeRoomMode === 'Nối từ'
+                  ? 'bg-purple-600 text-white shadow-xs'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+              }`}
+            >
+              <ArrowRightLeft className="w-3.5 h-3.5" />
+              Phòng 4: Ghép đôi
+            </button>
 
-          <button
-            onClick={() => setActiveRoomMode('Tự luận')}
-            className={`px-3 py-1 rounded-xl font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1.5 ${
-              activeRoomMode === 'Tự luận'
-                ? 'bg-rose-600 text-white shadow-xs'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
-            }`}
-          >
-            <Award className="w-3.5 h-3.5" />
-            Phòng 5: Tự luận
-          </button>
+            <button
+              onClick={() => setActiveRoomMode('Tự luận')}
+              className={`px-3 py-1 rounded-xl font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeRoomMode === 'Tự luận'
+                  ? 'bg-rose-600 text-white shadow-xs'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+              }`}
+            >
+              <Award className="w-3.5 h-3.5" />
+              Phòng 5: Tự luận
+            </button>
 
-          <button
-            onClick={() => setActiveRoomMode('all')}
-            className={`px-3 py-1 rounded-xl font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1.5 ${
-              activeRoomMode === 'all'
-                ? 'bg-indigo-600 text-white shadow-xs'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-            Tất cả (5 Dạng gộp)
-          </button>
+            <button
+              onClick={() => setActiveRoomMode('all')}
+              className={`px-3 py-1 rounded-xl font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeRoomMode === 'all'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+              Tất cả (5 Dạng)
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-[11px] font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-lg border border-slate-200 dark:border-slate-700">
+              Tổng số: <strong>{roomQuestions.length} câu</strong>
+            </span>
+          </div>
         </div>
       </header>
 
       {/* ------------------------------------------------------------------- */}
-      {/* 2. MAIN BODY: EXAM IN PROGRESS OR DETAILED SCORECARD                */}
+      {/* 2. MAIN BODY: EXAM QUESTIONS OR TEACHER EDIT MODE                   */}
       {/* ------------------------------------------------------------------- */}
       <div className="flex-1 flex overflow-hidden">
         {!isSubmitted ? (
           <>
             {/* Left Area: Questions Render Container */}
             <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+              {/* Teacher Mode Alert Banner */}
+              {isTeacherMode && (
+                <div className="max-w-4xl mx-auto mb-5 p-4 bg-gradient-to-r from-amber-50 via-orange-50 to-amber-100 border-2 border-amber-400 rounded-2xl flex flex-wrap items-center justify-between gap-3 font-sans text-xs shadow-sm">
+                  <div className="flex items-center gap-2.5 text-amber-950 font-bold">
+                    <span className="p-2 bg-amber-400 rounded-xl text-amber-950 shadow-2xs">
+                      <Edit3 className="w-4 h-4 stroke-[2.5]" />
+                    </span>
+                    <div>
+                      <span className="text-sm font-black text-[#073B66] block">
+                        Khu Vực Soạn & Hiệu Chỉnh Đề Thi (Cô Cao Thị Thu):
+                      </span>
+                      <p className="text-[11px] text-amber-900 font-normal">
+                        Cô có thể sửa trực tiếp nội dung & đáp án ở các ô bên dưới, bấm <strong>[ 💾 Lưu câu X ]</strong> sau mỗi câu, hoặc xóa câu lỗi bằng <strong>[ 🗑️ Xóa câu này ]</strong>.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleAddNewQuestionToRoom}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black flex items-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
+                    >
+                      <Plus className="w-4 h-4 text-white" />
+                      <span>Thêm câu hỏi mới</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSyncAllToBank}
+                      className="px-4 py-2 bg-[#073B66] hover:bg-[#0878C9] text-white rounded-xl font-black flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
+                    >
+                      <Save className="w-3.5 h-3.5 text-amber-300" />
+                      <span>Lưu & Nhập tất cả ({roomQuestions.length} câu) vào Ngân hàng đề</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* MODE 1: SINGLE QUESTION FOCUS VIEW */}
               {displayMode === 'single' && (
                 <div className="max-w-4xl mx-auto space-y-4">
                   {/* Progress Indicator */}
                   <div className="flex items-center justify-between text-xs text-slate-500 font-sans pb-2">
                     <span className="font-bold text-[#073B66] dark:text-sky-300">
-                      Câu {currentQuestionIndex + 1} / {examQuestions.length}
+                      Câu {currentQuestionIndex + 1} / {roomQuestions.length}
                     </span>
                     <span className="flex items-center gap-2">
-                      <span>Đã làm: <strong>{answeredCount}</strong> / {examQuestions.length}</span>
+                      <span>Đã làm: <strong>{answeredCount}</strong> / {roomQuestions.length}</span>
                       <span className="text-slate-300">•</span>
-                      <span>Hoàn thành: <strong>{Math.round((answeredCount / (examQuestions.length || 1)) * 100)}%</strong></span>
+                      <span>Hoàn thành: <strong>{Math.round((answeredCount / (roomQuestions.length || 1)) * 100)}%</strong></span>
                     </span>
                   </div>
 
@@ -1088,15 +1411,15 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                     <div
                       className="bg-[#0878C9] h-full transition-all duration-300"
                       style={{
-                        width: `${((currentQuestionIndex + 1) / (examQuestions.length || 1)) * 100}%`,
+                        width: `${((currentQuestionIndex + 1) / (roomQuestions.length || 1)) * 100}%`,
                       }}
                     />
                   </div>
 
                   {/* The Current Active Question Card */}
-                  {examQuestions[currentQuestionIndex] &&
+                  {roomQuestions[currentQuestionIndex] &&
                     renderQuestionCard(
-                      examQuestions[currentQuestionIndex],
+                      roomQuestions[currentQuestionIndex],
                       currentQuestionIndex,
                       true
                     )}
@@ -1115,14 +1438,22 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                     </button>
 
                     <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleAddNewQuestionToRoom}
+                        className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
+                      >
+                        <Plus className="w-3.5 h-3.5 text-emerald-700" />
+                        Thêm câu mới
+                      </button>
+
                       {/* Flag for review button */}
                       <button
                         onClick={() =>
-                          toggleFlagQuestion(examQuestions[currentQuestionIndex].id)
+                          toggleFlagQuestion(roomQuestions[currentQuestionIndex].id)
                         }
                         className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
                           flaggedQuestionIds.includes(
-                            examQuestions[currentQuestionIndex].id
+                            roomQuestions[currentQuestionIndex].id
                           )
                             ? 'bg-amber-100 border-amber-300 text-amber-900 shadow-xs'
                             : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 hover:bg-slate-50'
@@ -1131,25 +1462,25 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                         <Flag
                           className={`w-3.5 h-3.5 ${
                             flaggedQuestionIds.includes(
-                              examQuestions[currentQuestionIndex].id
+                              roomQuestions[currentQuestionIndex].id
                             )
                               ? 'fill-amber-600 text-amber-600'
                               : 'text-slate-400'
                           }`}
                         />
                         {flaggedQuestionIds.includes(
-                          examQuestions[currentQuestionIndex].id
+                          roomQuestions[currentQuestionIndex].id
                         )
                           ? 'Đã gắn cờ'
-                          : 'Gắn cờ xem lại'}
+                          : 'Gắn cờ'}
                       </button>
                     </div>
 
-                    {currentQuestionIndex < examQuestions.length - 1 ? (
+                    {currentQuestionIndex < roomQuestions.length - 1 ? (
                       <button
                         onClick={() =>
                           setCurrentQuestionIndex((prev) =>
-                            Math.min(examQuestions.length - 1, prev + 1)
+                            Math.min(roomQuestions.length - 1, prev + 1)
                           )
                         }
                         className="px-5 py-2.5 bg-[#0878C9] hover:bg-[#073B66] text-white rounded-xl font-bold flex items-center gap-1.5 shadow-sm cursor-pointer transition-all"
@@ -1173,18 +1504,36 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
               {/* MODE 2: SCROLL VIEW (ALL QUESTIONS ON ONE PAGE) */}
               {displayMode === 'scroll' && (
                 <div className="max-w-4xl mx-auto space-y-6">
-                  {examQuestions.map((q, idx) => (
+                  {roomQuestions.map((q, idx) => (
                     <div key={q.id || idx} id={`q_card_${idx}`}>
                       {renderQuestionCard(q, idx, false)}
                     </div>
                   ))}
-                  <div className="text-center pt-6 font-sans">
+
+                  {/* Bottom Global Actions */}
+                  <div className="p-4 bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-3 font-sans">
+                    <button
+                      onClick={handleAddNewQuestionToRoom}
+                      className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-xs shadow-md transition-all cursor-pointer flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Thêm câu hỏi mới vào phòng này
+                    </button>
+
+                    <button
+                      onClick={handleSyncAllToBank}
+                      className="px-5 py-2.5 bg-[#073B66] hover:bg-[#0878C9] text-white rounded-2xl font-black text-xs shadow-md transition-all cursor-pointer flex items-center gap-2"
+                    >
+                      <Save className="w-4 h-4 text-amber-300" />
+                      Lưu & Nhập tất cả {roomQuestions.length} câu vào Ngân hàng đề
+                    </button>
+
                     <button
                       onClick={() => setIsConfirmSubmitOpen(true)}
-                      className="px-8 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-sm shadow-md hover:shadow-lg transition-all cursor-pointer inline-flex items-center gap-2"
+                      className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 text-white rounded-2xl font-black text-xs shadow-md transition-all cursor-pointer flex items-center gap-2"
                     >
-                      <Send className="w-5 h-5" />
-                      Hoàn thành bài thi và Nộp bài ngay
+                      <Send className="w-4 h-4" />
+                      Hoàn thành & Nộp bài thi
                     </button>
                   </div>
                 </div>
@@ -1200,23 +1549,24 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
               <div className="space-y-3">
                 <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-700">
                   <h4 className="font-bold text-xs uppercase text-[#073B66] dark:text-sky-300">
-                    Bảng câu hỏi ({examQuestions.length})
+                    Bảng câu hỏi ({roomQuestions.length})
                   </h4>
-                  <span className="text-[11px] text-slate-500">
-                    {flaggedQuestionIds.length > 0 && (
-                      <span className="text-amber-600 font-bold flex items-center gap-1">
-                        <Flag className="w-3 h-3 fill-amber-500" /> {flaggedQuestionIds.length} cờ
-                      </span>
-                    )}
-                  </span>
+                  <button
+                    onClick={handleAddNewQuestionToRoom}
+                    className="p-1 text-emerald-700 hover:bg-emerald-50 rounded-lg font-bold text-[11px] flex items-center gap-0.5 cursor-pointer"
+                    title="Thêm câu hỏi mới"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Thêm
+                  </button>
                 </div>
 
                 {/* Grid of numbers */}
-                <div className="grid grid-cols-5 gap-1.5 max-h-[50vh] overflow-y-auto pr-1">
-                  {examQuestions.map((q, idx) => {
+                <div className="grid grid-cols-5 gap-1.5 max-h-[45vh] overflow-y-auto pr-1">
+                  {roomQuestions.map((q, idx) => {
                     const isAnswered = isQuestionAnswered(q);
                     const isFlagged = flaggedQuestionIds.includes(q.id);
                     const isCurrent = displayMode === 'single' && currentQuestionIndex === idx;
+                    const isSaved = !!savedQuestionStatus[q.id];
 
                     let btnStyle = 'bg-slate-100 text-slate-700 border-slate-200';
                     if (isAnswered) {
@@ -1247,6 +1597,9 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                         {isFlagged && (
                           <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-500 rounded-full" />
                         )}
+                        {isSaved && (
+                          <span className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full" />
+                        )}
                       </button>
                     );
                   })}
@@ -1271,13 +1624,20 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                 {/* Room Shortcuts notice */}
                 {activeRoomMode === 'Trắc nghiệm đơn' && (
                   <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-[11px] text-blue-900 dark:text-blue-300">
-                    💡 <strong>Phím tắt nhanh:</strong> Bấm trực tiếp <strong>A, B, C, D</strong> trên bàn phím để chọn đáp án tức thì!
+                    💡 <strong>Phím tắt:</strong> Bấm <strong>A, B, C, D</strong> để chọn đáp án tức thì!
                   </div>
                 )}
               </div>
 
               {/* Submit CTA */}
-              <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
+              <div className="pt-4 border-t border-slate-200 dark:border-slate-700 space-y-2">
+                <button
+                  onClick={handleSyncAllToBank}
+                  className="w-full py-2 bg-[#073B66] hover:bg-[#0878C9] text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer transition-colors"
+                >
+                  <Save className="w-3.5 h-3.5 text-amber-300" />
+                  Lưu & Nhập tất cả vào Ngân hàng đề
+                </button>
                 <button
                   onClick={() => setIsConfirmSubmitOpen(true)}
                   className="w-full py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-sm cursor-pointer"
@@ -1405,7 +1765,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
               </div>
 
               <div className="space-y-4">
-                {examQuestions.map((q, idx) => (
+                {roomQuestions.map((q, idx) => (
                   <div
                     key={q.id || idx}
                     className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 space-y-2 text-xs"
@@ -1531,13 +1891,13 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                 Xác nhận nộp bài thi
               </h3>
               <p className="text-xs text-slate-500">
-                Em đã làm được <strong>{answeredCount}</strong> / {examQuestions.length} câu hỏi.
+                Em đã làm được <strong>{answeredCount}</strong> / {roomQuestions.length} câu hỏi.
               </p>
             </div>
 
-            {answeredCount < examQuestions.length && (
+            {answeredCount < roomQuestions.length && (
               <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-medium">
-                ⚠️ Chú ý: Em vẫn còn <strong>{examQuestions.length - answeredCount} câu chưa làm</strong>.
+                ⚠️ Chú ý: Em vẫn còn <strong>{roomQuestions.length - answeredCount} câu chưa làm</strong>.
                 Nếu nộp bài bây giờ, những câu chưa làm sẽ được tính 0 điểm.
               </div>
             )}
@@ -1563,7 +1923,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
   );
 
   // -------------------------------------------------------------------------
-  // 9. RENDER QUESTION CARD HELPERS (SPECIALIZED FOR EACH OF THE 5 ROOMS)
+  // 9. RENDER QUESTION CARD HELPERS (SUPPORTS TEACHER EDITING & STUDENT MODE)
   // -------------------------------------------------------------------------
   function renderQuestionCard(q: Question, idx: number, isFocusView: boolean) {
     const isSingle = q.type === 'Trắc nghiệm đơn' || q.type === 'Trắc nghiệm';
@@ -1572,14 +1932,19 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
     const isMatch = q.type === 'Nối từ';
     const isEssay = q.type === 'Tự luận';
 
+    const isCardEditing = isTeacherMode || editingCardId === q.id;
+    const isCardSaved = !!savedQuestionStatus[q.id];
+
     return (
       <div
-        className={`p-5 sm:p-6 rounded-3xl border transition-all ${themeCardClasses} ${fontSizeClasses}`}
+        className={`p-5 sm:p-6 rounded-3xl border transition-all ${themeCardClasses} ${fontSizeClasses} ${
+          isCardEditing ? 'border-amber-400 ring-2 ring-amber-100 dark:ring-amber-950/40' : ''
+        }`}
       >
-        {/* Header: Type and question number */}
-        <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-200/60 dark:border-slate-700/60 font-sans mb-3">
+        {/* Header: Type and question number, Teacher Actions */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200/60 dark:border-slate-700/60 font-sans mb-3">
           <div className="flex items-center gap-2">
-            <span className="w-7 h-7 rounded-lg bg-[#073B66] text-white flex items-center justify-center font-bold text-xs">
+            <span className="w-7 h-7 rounded-lg bg-[#073B66] text-white flex items-center justify-center font-black text-xs shadow-2xs">
               {idx + 1}
             </span>
             <span className="font-bold text-xs text-[#0878C9] uppercase">
@@ -1599,6 +1964,31 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Toggle Card Edit Mode */}
+            <button
+              type="button"
+              onClick={() => setEditingCardId(editingCardId === q.id ? null : q.id)}
+              className={`px-2.5 py-1 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors ${
+                isCardEditing
+                  ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+              }`}
+              title="Chỉnh sửa nội dung và đáp án câu này"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>{isCardEditing ? 'Đang sửa' : 'Sửa câu này'}</span>
+            </button>
+
+            {/* Delete Question Button */}
+            <button
+              type="button"
+              onClick={() => handleDeleteIndividualQuestion(q.id, idx)}
+              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+              title="Xóa câu hỏi này khỏi phòng thi"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+
             {flaggedQuestionIds.includes(q.id) && (
               <span className="bg-amber-100 text-amber-900 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
                 <Flag className="w-3 h-3 fill-amber-500" /> Cần xem lại
@@ -1609,19 +1999,106 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
 
         {/* Content & Stimulus */}
         <div className="space-y-3">
+          {/* TEACHER EDITING OF QUESTION CONTENT */}
+          {isCardEditing ? (
+            <div className="space-y-1 font-sans">
+              <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-200">
+                {isTF ? 'Đoạn trích tư liệu lịch sử / Nội dung câu hỏi:' : 'Nội dung câu hỏi:'}
+              </label>
+              <textarea
+                rows={isTF ? 3 : 2}
+                value={q.content}
+                onChange={(e) => handleUpdateQuestion(q.id, { content: e.target.value })}
+                className="w-full p-2.5 bg-white dark:bg-slate-800 border border-amber-300 rounded-xl font-serif text-xs sm:text-sm leading-relaxed outline-none focus:ring-2 focus:ring-amber-400"
+                placeholder="Nhập nội dung câu hỏi..."
+              />
+            </div>
+          ) : (
+            <div className="font-serif leading-relaxed text-slate-900 dark:text-slate-100 whitespace-pre-line font-medium mb-3">
+              {q.content}
+            </div>
+          )}
+
           {/* 1. DẠNG TRẮC NGHIỆM ĐƠN */}
           {isSingle && (
-            <div>
-              <div className="font-serif leading-relaxed text-slate-900 dark:text-slate-100 whitespace-pre-line font-medium mb-3">
-                {q.content}
-              </div>
+            <div className="space-y-3">
+              {/* Teacher Edit Answer Selection Buttons */}
+              {isCardEditing && (
+                <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-blue-50/70 border border-blue-200 rounded-xl font-sans">
+                  <span className="font-bold text-[#073B66] text-xs flex items-center gap-1.5">
+                    <CheckSquare className="w-4 h-4 text-blue-600" />
+                    Bấm chọn đáp án đúng cho câu này:
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {(['A', 'B', 'C', 'D'] as const).map((letter) => {
+                      const isCorrect = q.correctAnswer?.toUpperCase() === letter;
+                      return (
+                        <button
+                          key={letter}
+                          type="button"
+                          onClick={() => handleSetSingleChoiceAnswer(q.id, letter)}
+                          className={`w-9 h-8 rounded-xl font-black text-xs transition-all cursor-pointer flex items-center justify-center ${
+                            isCorrect
+                              ? 'bg-emerald-600 text-white shadow-md ring-2 ring-emerald-300 scale-105'
+                              : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-100'
+                          }`}
+                        >
+                          {letter}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
+              {/* Options */}
               {q.options && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2 font-sans">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1 font-sans">
                   {(['A', 'B', 'C', 'D'] as const).map((letter, optIdx) => {
                     const optText = q.options?.[optIdx] || '';
                     const cleanText = optText.replace(/^[A-D]\.\s*/, '');
                     const isSelected = singleAnswers[q.id] === letter;
+                    const isCorrectAnswer = q.correctAnswer?.toUpperCase() === letter;
+
+                    if (isCardEditing) {
+                      return (
+                        <div
+                          key={letter}
+                          className={`p-2.5 rounded-xl border flex items-center gap-2 transition-all ${
+                            isCorrectAnswer
+                              ? 'bg-emerald-50/70 border-emerald-400 ring-1 ring-emerald-300'
+                              : 'bg-white dark:bg-slate-800 border-slate-200'
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => handleSetSingleChoiceAnswer(q.id, letter)}
+                            className={`w-6 h-6 rounded-lg font-black text-xs shrink-0 cursor-pointer transition-colors flex items-center justify-center ${
+                              isCorrectAnswer
+                                ? 'bg-emerald-600 text-white shadow-xs'
+                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            }`}
+                            title="Đặt làm đáp án đúng"
+                          >
+                            {letter}
+                          </button>
+                          <input
+                            type="text"
+                            value={cleanText}
+                            onChange={(e) =>
+                              handleUpdateSingleChoiceOption(q.id, optIdx, letter, e.target.value)
+                            }
+                            className="flex-1 bg-transparent border-none outline-none text-xs font-serif text-slate-900 dark:text-white"
+                            placeholder={`Nội dung phương án ${letter}...`}
+                          />
+                          {isCorrectAnswer && (
+                            <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded shrink-0">
+                              Đúng ✓
+                            </span>
+                          )}
+                        </div>
+                      );
+                    }
 
                     return (
                       <button
@@ -1660,129 +2137,140 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
             </div>
           )}
 
-          {/* 2. DẠNG ĐÚNG / SAI CÓ TƯ LIỆU VÀ BÚT DẠ QUANG HIGHLIGHT */}
+          {/* 2. DẠNG ĐÚNG / SAI CÓ TƯ LIỆU VÀ NÚT BẤM [ ĐÚNG ] / [ SAI ] */}
           {isTF && (
             <div className="space-y-4">
-              {/* Document Reading Pane with Highlighter Bar */}
-              <div className="p-4 rounded-2xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-900/40 space-y-2.5">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-200/70 pb-2 font-sans">
-                  <span className="text-xs font-bold text-amber-900 dark:text-amber-300 flex items-center gap-1.5">
-                    <BookOpen className="w-4 h-4 text-amber-600" />
-                    ĐOẠN TRÍCH TƯ LIỆU LỊCH SỬ (ĐỌC KỸ TRƯỚC KHI TRẢ LỜI):
-                  </span>
-
-                  {/* Highlighter selection tool */}
-                  <div className="flex items-center gap-1 text-[11px]">
-                    <span className="text-slate-500 font-medium">Bút đánh dấu:</span>
-                    <button
-                      type="button"
-                      onClick={() => setHighlighterColor('yellow')}
-                      className={`px-2 py-0.5 rounded-md font-bold cursor-pointer border ${
-                        highlighterColor === 'yellow'
-                          ? 'bg-amber-200 text-amber-950 border-amber-400 ring-1 ring-amber-400'
-                          : 'bg-white text-slate-600 border-slate-200'
-                      }`}
-                    >
-                      Bút vàng
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setHighlighterColor('cyan')}
-                      className={`px-2 py-0.5 rounded-md font-bold cursor-pointer border ${
-                        highlighterColor === 'cyan'
-                          ? 'bg-sky-200 text-sky-950 border-sky-400 ring-1 ring-sky-400'
-                          : 'bg-white text-slate-600 border-slate-200'
-                      }`}
-                    >
-                      Bút xanh
-                    </button>
+              {!isCardEditing && (
+                <div className="p-4 rounded-2xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-900/40 space-y-2.5 font-sans">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-200/70 pb-2">
+                    <span className="text-xs font-bold text-amber-900 dark:text-amber-300 flex items-center gap-1.5">
+                      <BookOpen className="w-4 h-4 text-amber-600" />
+                      ĐOẠN TRÍCH TƯ LIỆU LỊCH SỬ:
+                    </span>
+                    <div className="flex items-center gap-1 text-[11px]">
+                      <span className="text-slate-500 font-medium">Bút dạ quang:</span>
+                      <button
+                        type="button"
+                        onClick={() => setHighlighterColor('yellow')}
+                        className={`px-2 py-0.5 rounded-md font-bold cursor-pointer border ${
+                          highlighterColor === 'yellow'
+                            ? 'bg-amber-200 text-amber-950 border-amber-400'
+                            : 'bg-white text-slate-600 border-slate-200'
+                        }`}
+                      >
+                        Vàng
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setHighlighterColor('cyan')}
+                        className={`px-2 py-0.5 rounded-md font-bold cursor-pointer border ${
+                          highlighterColor === 'cyan'
+                            ? 'bg-sky-200 text-sky-950 border-sky-400'
+                            : 'bg-white text-slate-600 border-slate-200'
+                        }`}
+                      >
+                        Xanh
+                      </button>
+                    </div>
+                  </div>
+                  <div className="font-serif leading-relaxed text-slate-900 dark:text-slate-100 whitespace-pre-line text-sm sm:text-base italic pl-2 border-l-4 border-amber-500 bg-white/70 dark:bg-slate-800/60 p-3 rounded-r-xl">
+                    {q.content}
                   </div>
                 </div>
+              )}
 
-                {/* Stimulus text */}
-                <div className="font-serif leading-relaxed text-slate-900 dark:text-slate-100 whitespace-pre-line text-sm sm:text-base italic pl-2 border-l-4 border-amber-500 bg-white/70 dark:bg-slate-800/60 p-3 rounded-r-xl">
-                  {q.content}
-                </div>
-
-                {/* MOET Staircase Live Tracker */}
-                <div className="flex items-center justify-between text-[11px] font-sans text-amber-900 dark:text-amber-300 pt-1">
-                  <span>Barem điểm Bộ GD&ĐT:</span>
-                  <div className="flex items-center gap-2 font-bold">
-                    <span>1 ý = 0.1đ</span>
-                    <span>•</span>
-                    <span>2 ý = 0.25đ</span>
-                    <span>•</span>
-                    <span>3 ý = 0.5đ</span>
-                    <span>•</span>
-                    <span className="text-emerald-700 dark:text-emerald-400">4 ý = 1.0đ</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* 4 Statements a, b, c, d with [ĐÚNG] and [SAI] buttons */}
+              {/* 4 Statements a, b, c, d */}
               {q.trueFalseStatements && (
-                <div className="space-y-2.5 font-sans">
-                  <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase">
-                    Xác định mỗi nhận định sau là ĐÚNG hay SAI căn cứ vào tư liệu lịch sử trên:
+                <div className="space-y-2 font-sans">
+                  <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase flex items-center justify-between">
+                    <span>Xác định mỗi nhận định sau là ĐÚNG hay SAI:</span>
+                    {isCardEditing && (
+                      <span className="text-amber-700 font-bold">
+                        (Bấm trực tiếp nút ĐÚNG/SAI bên dưới để cập nhật đáp án chuẩn)
+                      </span>
+                    )}
                   </div>
 
                   <div className="space-y-2">
-                    {q.trueFalseStatements.map((stmt) => {
-                      const currentPick = (tfAnswers[q.id] || {})[stmt.id];
+                    {q.trueFalseStatements.map((stmt, stmtIdx) => {
+                      const studentPick = (tfAnswers[q.id] || {})[stmt.id];
+                      const activeCorrect = stmt.isCorrect;
 
                       return (
                         <div
                           key={stmt.id}
-                          className="p-3.5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs hover:border-slate-300"
+                          className="p-3 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs hover:border-slate-300"
                         >
-                          <div className="flex-1 font-serif leading-relaxed text-xs sm:text-sm">
-                            <strong className="mr-2 uppercase font-sans text-purple-800 dark:text-purple-300 text-sm">
+                          <div className="flex items-center gap-2 flex-1">
+                            <strong className="w-6 h-6 rounded-lg bg-purple-100 text-purple-900 font-black text-xs shrink-0 flex items-center justify-center uppercase font-sans">
                               {stmt.id})
                             </strong>
-                            {stmt.statement}
+                            {isCardEditing ? (
+                              <input
+                                type="text"
+                                value={stmt.statement}
+                                onChange={(e) =>
+                                  handleUpdateTfStatementText(q.id, stmtIdx, e.target.value)
+                                }
+                                className="flex-1 bg-transparent border-none outline-none text-xs font-serif text-slate-900 dark:text-white"
+                                placeholder={`Nhận định ${stmt.id}...`}
+                              />
+                            ) : (
+                              <span className="font-serif leading-relaxed text-xs sm:text-sm">
+                                {stmt.statement}
+                              </span>
+                            )}
                           </div>
 
-                          <div className="flex items-center gap-2 shrink-0">
-                            {/* Button ĐÚNG */}
+                          <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                            {/* BUTTON ĐÚNG */}
                             <button
                               type="button"
-                              onClick={() =>
-                                setTfAnswers((prev) => ({
-                                  ...prev,
-                                  [q.id]: {
-                                    ...prev[q.id],
-                                    [stmt.id]: true,
-                                  },
-                                }))
-                              }
-                              className={`px-5 py-2 rounded-xl border text-xs font-black transition-all cursor-pointer ${
-                                currentPick === true
+                              onClick={() => {
+                                if (isCardEditing) {
+                                  handleToggleTfStatement(q.id, stmtIdx, true);
+                                } else {
+                                  setTfAnswers((prev) => ({
+                                    ...prev,
+                                    [q.id]: {
+                                      ...prev[q.id],
+                                      [stmt.id]: true,
+                                    },
+                                  }));
+                                }
+                              }}
+                              className={`px-4 py-1.5 rounded-xl border text-xs font-black transition-all cursor-pointer ${
+                                (isCardEditing ? activeCorrect === true : studentPick === true)
                                   ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs ring-2 ring-emerald-300'
                                   : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 hover:bg-emerald-50 hover:text-emerald-800'
                               }`}
                             >
-                              ĐÚNG {currentPick === true && '✓'}
+                              ĐÚNG {(isCardEditing ? activeCorrect === true : studentPick === true) && '✓'}
                             </button>
 
-                            {/* Button SAI */}
+                            {/* BUTTON SAI */}
                             <button
                               type="button"
-                              onClick={() =>
-                                setTfAnswers((prev) => ({
-                                  ...prev,
-                                  [q.id]: {
-                                    ...prev[q.id],
-                                    [stmt.id]: false,
-                                  },
-                                }))
-                              }
-                              className={`px-5 py-2 rounded-xl border text-xs font-black transition-all cursor-pointer ${
-                                currentPick === false
+                              onClick={() => {
+                                if (isCardEditing) {
+                                  handleToggleTfStatement(q.id, stmtIdx, false);
+                                } else {
+                                  setTfAnswers((prev) => ({
+                                    ...prev,
+                                    [q.id]: {
+                                      ...prev[q.id],
+                                      [stmt.id]: false,
+                                    },
+                                  }));
+                                }
+                              }}
+                              className={`px-4 py-1.5 rounded-xl border text-xs font-black transition-all cursor-pointer ${
+                                (isCardEditing ? activeCorrect === false : studentPick === false)
                                   ? 'bg-rose-600 text-white border-rose-600 shadow-xs ring-2 ring-rose-300'
                                   : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 hover:bg-rose-50 hover:text-rose-800'
                               }`}
                             >
-                              SAI {currentPick === false && '✗'}
+                              SAI {(isCardEditing ? activeCorrect === false : studentPick === false) && '✗'}
                             </button>
                           </div>
                         </div>
@@ -1794,25 +2282,14 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
             </div>
           )}
 
-          {/* 3. DẠNG ĐIỀN TỪ VÀO CHỖ TRỐNG CÓ WORD BANK TƯƠNG TÁC */}
+          {/* 3. DẠNG ĐIỀN TỪ VÀO CHỖ TRỐNG */}
           {isBlank && (
             <div className="space-y-3 font-sans">
-              <div className="font-serif leading-relaxed text-slate-900 dark:text-slate-100 whitespace-pre-line text-sm sm:text-base mb-3 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
-                {q.content}
-              </div>
-
-              {/* Word Bank chips */}
               {q.wordBank && q.wordBank.length > 0 && (
                 <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="font-bold text-amber-900 dark:text-amber-300 text-xs flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                      Ngân hàng từ khóa gợi ý (Bấm vào từ để điền trực tiếp):
-                    </span>
-                    <span className="text-[10px] text-amber-800">
-                      Bấm từ sẽ tự điền vào ô trống tiếp theo
-                    </span>
-                  </div>
+                  <span className="font-bold text-amber-900 dark:text-amber-300 text-xs block mb-1.5">
+                    Ngân hàng từ khóa gợi ý (Bấm vào từ để điền trực tiếp):
+                  </span>
                   <div className="flex flex-wrap gap-2">
                     {q.wordBank.map((w, wi) => (
                       <button
@@ -1821,15 +2298,10 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                         onClick={() => {
                           const currentSlots = blankAnswers[q.id] || {};
                           const slots = q.blankItems || [];
-                          // Fill into active slot if exists, otherwise first empty
                           let targetSlot = activeBlankSlot && activeBlankSlot.qId === q.id
                             ? slots.find((s) => s.blankLabel === activeBlankSlot.blankLabel)
                             : slots.find((s) => !currentSlots[s.blankLabel]);
-
-                          if (!targetSlot && slots.length > 0) {
-                            targetSlot = slots[0];
-                          }
-
+                          if (!targetSlot && slots.length > 0) targetSlot = slots[0];
                           if (targetSlot) {
                             setBlankAnswers((prev) => ({
                               ...prev,
@@ -1840,7 +2312,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                             }));
                           }
                         }}
-                        className="px-3 py-1.5 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-xl text-xs font-bold text-amber-900 dark:text-amber-200 hover:bg-amber-100 hover:border-amber-400 cursor-pointer shadow-2xs transition-all active:scale-95"
+                        className="px-3 py-1 bg-white dark:bg-slate-800 border border-amber-300 rounded-xl text-xs font-bold text-amber-900 hover:bg-amber-100 cursor-pointer shadow-2xs"
                       >
                         {w}
                       </button>
@@ -1849,20 +2321,14 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                 </div>
               )}
 
-              {/* Blank slots inputs */}
+              {/* Blank slots */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {q.blankItems?.map((slot) => {
                   const val = (blankAnswers[q.id] || {})[slot.blankLabel] || '';
-                  const isActive = activeBlankSlot?.qId === q.id && activeBlankSlot?.blankLabel === slot.blankLabel;
-
                   return (
                     <div
                       key={slot.id}
-                      className={`p-3 bg-white dark:bg-slate-800 rounded-2xl border transition-all flex items-center gap-2.5 ${
-                        isActive
-                          ? 'border-emerald-500 ring-2 ring-emerald-300 shadow-xs'
-                          : 'border-slate-200 dark:border-slate-700'
-                      }`}
+                      className="p-3 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 flex items-center gap-2.5"
                     >
                       <span className="px-2.5 py-1 rounded-xl bg-emerald-100 text-emerald-900 font-bold text-xs shrink-0">
                         {slot.blankLabel}
@@ -1880,27 +2346,9 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                             },
                           }))
                         }
-                        placeholder="Gõ hoặc bấm từ gợi ý ở trên..."
+                        placeholder="Gõ hoặc bấm từ gợi ý..."
                         className="flex-1 bg-transparent border-none outline-none text-xs font-serif text-slate-900 dark:text-slate-100"
                       />
-                      {val && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setBlankAnswers((prev) => ({
-                              ...prev,
-                              [q.id]: {
-                                ...prev[q.id],
-                                [slot.blankLabel]: '',
-                              },
-                            }))
-                          }
-                          className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer"
-                          title="Xóa ô này"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      )}
                     </div>
                   );
                 })}
@@ -1908,21 +2356,11 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
             </div>
           )}
 
-          {/* 4. DẠNG GHÉP ĐÔI / NỐI TỪ VỚI THAO TÁC TRỰC QUAN */}
+          {/* 4. DẠNG GHÉP ĐÔI / NỐI TỪ */}
           {isMatch && (
             <div className="space-y-3 font-sans">
-              <div className="font-serif leading-relaxed text-slate-900 dark:text-slate-100 mb-2 font-medium">
-                {q.content}
-              </div>
-
-              <div className="p-2 rounded-xl bg-purple-50 dark:bg-purple-950/40 text-[11px] text-purple-900 dark:text-purple-300 font-bold flex items-center gap-1.5">
-                <ArrowRightLeft className="w-4 h-4 text-purple-600 shrink-0" />
-                Hướng dẫn: Chọn đáp án tương ứng từ Cột B để ghép với từng mục ở Cột A:
-              </div>
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {/* Column A (Left items with selector) */}
-                <div className="p-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2.5">
+                <div className="p-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2">
                   <div className="font-bold text-xs text-[#073B66] dark:text-sky-300 pb-2 border-b">
                     Cột A: Mốc sự kiện / Nhân vật
                   </div>
@@ -1931,64 +2369,41 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                     return (
                       <div
                         key={p.id}
-                        className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs transition-all ${
-                          currentMatched
-                            ? 'bg-purple-50/70 dark:bg-purple-950/40 border-purple-300'
-                            : 'bg-slate-50 dark:bg-slate-700/50 border-slate-200'
-                        }`}
+                        className="p-2.5 rounded-xl border border-slate-200 bg-slate-50 dark:bg-slate-700/50 flex items-center justify-between gap-2 text-xs"
                       >
-                        <span className="font-serif font-medium">{p.left}</span>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <select
-                            value={currentMatched || ''}
-                            onChange={(e) =>
-                              setMatchingAnswers((prev) => ({
-                                ...prev,
-                                [q.id]: {
-                                  ...prev[q.id],
-                                  [p.id]: e.target.value,
-                                },
-                              }))
-                            }
-                            className="px-2.5 py-1.5 bg-white dark:bg-slate-800 border border-purple-300 rounded-lg font-bold text-xs cursor-pointer outline-none focus:ring-2 focus:ring-purple-400"
-                          >
-                            <option value="">Ghép với Cột B...</option>
-                            <option value="A">Nối với A</option>
-                            <option value="B">Nối với B</option>
-                            <option value="C">Nối với C</option>
-                            <option value="D">Nối với D</option>
-                          </select>
-                          {currentMatched && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setMatchingAnswers((prev) => {
-                                  const updated = { ...prev[q.id] };
-                                  delete updated[p.id];
-                                  return { ...prev, [q.id]: updated };
-                                })
-                              }
-                              className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer"
-                              title="Hủy ghép"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
+                        <span className="font-serif">{p.left}</span>
+                        <select
+                          value={currentMatched || ''}
+                          onChange={(e) =>
+                            setMatchingAnswers((prev) => ({
+                              ...prev,
+                              [q.id]: {
+                                ...prev[q.id],
+                                [p.id]: e.target.value,
+                              },
+                            }))
+                          }
+                          className="px-2 py-1 bg-white dark:bg-slate-800 border border-purple-300 rounded-lg font-bold text-xs"
+                        >
+                          <option value="">Ghép Cột B...</option>
+                          <option value="A">Nối A</option>
+                          <option value="B">Nối B</option>
+                          <option value="C">Nối C</option>
+                          <option value="D">Nối D</option>
+                        </select>
                       </div>
                     );
                   })}
                 </div>
 
-                {/* Column B (Right items) */}
-                <div className="p-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2.5">
+                <div className="p-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2">
                   <div className="font-bold text-xs text-purple-900 dark:text-purple-300 pb-2 border-b">
-                    Cột B: Ý nghĩa / Kết quả lịch sử
+                    Cột B: Ý nghĩa / Kết quả
                   </div>
                   {q.matchingPairs?.map((p) => (
                     <div
                       key={p.id}
-                      className="p-3 rounded-xl bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 text-xs font-serif leading-relaxed"
+                      className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-700/50 border border-slate-200 text-xs font-serif"
                     >
                       {p.right}
                     </div>
@@ -1998,65 +2413,16 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
             </div>
           )}
 
-          {/* 5. DẠNG TỰ LUẬN CHUYÊN SÂU VỚI BỘ ĐẾM TỪ VÀ RUBRIC LIVE */}
+          {/* 5. DẠNG TỰ LUẬN */}
           {isEssay && (
             <div className="space-y-3 font-sans">
-              <div className="p-4 rounded-2xl bg-rose-50/60 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900 space-y-2">
-                <span className="text-xs font-bold text-rose-900 dark:text-rose-300 uppercase block">
-                  ĐỀ BÀI TỰ LUẬN PHÁT TRIỂN NĂNG LỰC LỊCH SỬ:
-                </span>
-                <div className="font-serif text-sm sm:text-base leading-relaxed text-slate-900 dark:text-slate-100 font-medium">
-                  {q.content}
-                </div>
-              </div>
-
-              {/* Rubric Points Reference */}
-              {q.rubricPoints && q.rubricPoints.length > 0 && (
-                <div className="p-3.5 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-1.5 text-xs">
-                  <div className="font-bold text-[#073B66] dark:text-sky-300 flex items-center justify-between">
-                    <span>Biểu điểm Rubric đánh giá (Thang 10 điểm):</span>
-                    <span className="text-[11px] text-slate-500 font-normal">Cô Thu sẽ duyệt theo barem này</span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    {q.rubricPoints.map((rb, rbi) => (
-                      <div key={rbi} className="p-2 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-[11px]">
-                        <span className="font-black text-rose-700 block mb-0.5">+{rb.points} điểm</span>
-                        <span className="text-slate-600 dark:text-slate-300 font-serif">{rb.criteria}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Essay Outline Accordion */}
-              {q.essayOutline && (
-                <details className="p-3 rounded-2xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 text-xs">
-                  <summary className="font-bold text-amber-900 dark:text-amber-300 cursor-pointer flex items-center justify-between">
-                    <span>💡 Gợi ý dàn ý và dẫn chứng lịch sử</span>
-                    <span className="text-[11px] underline">Xem / Ẩn</span>
-                  </summary>
-                  <div className="mt-2 text-slate-700 dark:text-slate-200 font-serif whitespace-pre-line text-xs pl-2 border-l-2 border-amber-400">
-                    {q.essayOutline}
-                  </div>
-                </details>
-              )}
-
-              {/* Live Textarea with Word Count and Auto-Save Status */}
               <div className="space-y-2">
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-700 dark:text-slate-200">Bài làm của em:</span>
-                    <span className="text-[11px] text-emerald-600 font-medium">
-                      ✓ Tự động lưu nháp: {lastAutoSavedTime}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-slate-500">
-                      Số từ: <strong>{(essayAnswers[q.id] || '').trim() ? (essayAnswers[q.id] || '').trim().split(/\s+/).length : 0}</strong> / 250 từ khuyến nghị
-                    </span>
-                  </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-slate-700 dark:text-slate-200">Bài làm tự luận:</span>
+                  <span className="text-[11px] text-slate-500">
+                    Số từ: <strong>{(essayAnswers[q.id] || '').trim() ? (essayAnswers[q.id] || '').trim().split(/\s+/).length : 0}</strong> từ
+                  </span>
                 </div>
-
                 <textarea
                   value={essayAnswers[q.id] || ''}
                   onChange={(e) =>
@@ -2065,47 +2431,58 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                       [q.id]: e.target.value,
                     }))
                   }
-                  rows={9}
-                  placeholder="Em hãy trình bày các luận điểm lịch sử của mình tại đây (hệ thống tự động lưu bài làm sau mỗi 15 giây)..."
-                  className="w-full p-4 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl text-xs sm:text-sm font-serif leading-relaxed outline-none focus:ring-2 focus:ring-[#0878C9] shadow-inner"
+                  rows={8}
+                  placeholder="Em hãy trình bày các luận điểm lịch sử của mình tại đây..."
+                  className="w-full p-4 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl text-xs sm:text-sm font-serif leading-relaxed outline-none focus:ring-2 focus:ring-[#0878C9]"
                 />
-
-                {/* AI Instant Feedback & Mock Rubric Scoring */}
-                <div className="flex items-center justify-between pt-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const text = (essayAnswers[q.id] || '').trim();
-                      const wordCount = text ? text.split(/\s+/).length : 0;
-                      let mockScore = 5.0;
-                      let comment = '';
-                      if (wordCount >= 100) {
-                        mockScore = 8.5;
-                        comment = 'Bài làm đầy đủ các luận điểm, diễn đạt lưu loát và có dẫn chứng lịch sử tiêu biểu!';
-                      } else if (wordCount >= 50) {
-                        mockScore = 6.5;
-                        comment = 'Bài làm đúng hướng, nhưng cần mở rộng thêm phần liên hệ thực tiễn và bài học kinh nghiệm.';
-                      } else {
-                        mockScore = 4.0;
-                        comment = 'Bài viết còn quá ngắn. Em hãy bổ sung thêm các mốc thời gian và ý nghĩa lịch sử theo dàn ý gợi ý!';
-                      }
-                      setAiFeedbackMap((prev) => ({ ...prev, [q.id]: { score: mockScore, comment } }));
-                    }}
-                    className="px-3.5 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-2xs hover:shadow-sm cursor-pointer"
-                  >
-                    <Wand2 className="w-3.5 h-3.5" />
-                    AI Chấm thử & Gợi ý cải thiện
-                  </button>
-
-                  {aiFeedbackMap[q.id] && (
-                    <span className="text-xs font-bold text-purple-700 dark:text-purple-300">
-                      Sơ bộ: {aiFeedbackMap[q.id].score}/10đ • {aiFeedbackMap[q.id].comment}
-                    </span>
-                  )}
-                </div>
               </div>
             </div>
           )}
+        </div>
+
+        {/* ------------------------------------------------------------------- */}
+        {/* FOOTER OF QUESTION CARD: [ 💾 LƯU CÂU X ] & [ 🗑️ XÓA CÂU NÀY ]        */}
+        {/* ------------------------------------------------------------------- */}
+        <div className="pt-3 mt-3 border-t border-slate-200/80 dark:border-slate-700/80 flex flex-wrap items-center justify-between gap-2.5 font-sans">
+          <div className="flex items-center gap-2">
+            {/* BUTTON LƯU CÂU X */}
+            <button
+              type="button"
+              onClick={() => handleSaveIndividualQuestion(q.id, idx)}
+              className="px-4 py-2 bg-[#073B66] hover:bg-[#0878C9] text-white rounded-xl font-black text-xs flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95"
+            >
+              <Save className="w-3.5 h-3.5 text-amber-300" />
+              <span>Lưu câu {idx + 1}</span>
+            </button>
+
+            {/* NHÃN XÁC NHẬN: ✓ Đã lưu lúc [HH:MM:SS] */}
+            {savedQuestionStatus[q.id] && (
+              <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-300 px-3 py-1 rounded-xl flex items-center gap-1 animate-in fade-in">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                ✓ Đã lưu lúc [{savedQuestionStatus[q.id]}]
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="text-slate-500 text-xs flex items-center gap-1.5">
+              <span>Đáp án chuẩn:</span>
+              <strong className="text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                {q.correctAnswer}
+              </strong>
+            </div>
+
+            {/* BUTTON XÓA CÂU NÀY */}
+            <button
+              type="button"
+              onClick={() => handleDeleteIndividualQuestion(q.id, idx)}
+              className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
+              title="Xóa câu này khỏi phòng thi"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+              <span>Xóa câu này</span>
+            </button>
+          </div>
         </div>
       </div>
     );
