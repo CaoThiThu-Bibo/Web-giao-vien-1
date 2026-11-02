@@ -165,14 +165,15 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
   }, [initialQuestions, combinedQuestionPool, activeRoomMode]);
 
   // MUTABLE ROOM QUESTIONS (Allows adding, editing, saving, deleting in room)
-  const [roomQuestions, setRoomQuestions] = useState<Question[]>([]);
+  const [roomQuestions, setRoomQuestions] = useState<Question[]>(() => baseQuestionsForRoom);
 
   useEffect(() => {
     if (isOpen) {
       setRoomQuestions(baseQuestionsForRoom);
+      setCurrentQuestionIndex(0);
       setSavedQuestionStatus({});
     }
-  }, [isOpen, activeRoomMode, baseQuestionsForRoom]);
+  }, [isOpen, activeRoomMode]);
 
   // Dynamic Room Title
   const computedRoomTitle = useMemo(() => {
@@ -484,8 +485,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
         author: 'Cao Thị Thu',
         updatedAt: today,
       };
-    } else {
-      // Tự luận
+    } else if (activeRoomMode === 'Tự luận') {
       newQ = {
         id: newId,
         grade: 12,
@@ -507,12 +507,38 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
         author: 'Cao Thị Thu',
         updatedAt: today,
       };
+    } else {
+      // Dành cho Phòng tổng hợp 'all'
+      newQ = {
+        id: newId,
+        grade: 12,
+        topic: 'Lịch sử Việt Nam trọng tâm (Tổng hợp)',
+        lesson: 'Bài ôn tập tổng hợp 5 dạng',
+        knowledgeDomain: 'Kiến thức cốt lõi',
+        type: 'Trắc nghiệm đơn',
+        cognitiveLevel: 'Nhận biết',
+        content: `Câu hỏi mới số ${roomQuestions.length + 1}: Nhập nội dung câu hỏi tại đây...`,
+        options: [
+          'A. Phương án lựa chọn A',
+          'B. Phương án lựa chọn B',
+          'C. Phương án lựa chọn C',
+          'D. Phương án lựa chọn D',
+        ],
+        correctAnswer: 'A',
+        explanation: 'Căn cứ vào SGK Lịch sử GDPT 2018.',
+        source: 'Cô Cao Thị Thu biên soạn',
+        author: 'Cao Thị Thu',
+        updatedAt: today,
+      };
     }
 
-    setRoomQuestions((prev) => [...prev, newQ]);
+    setRoomQuestions((prev) => {
+      const updated = [...prev, newQ];
+      setCurrentQuestionIndex(updated.length - 1);
+      return updated;
+    });
     setEditingCardId(newId);
     setIsTeacherMode(true);
-    setCurrentQuestionIndex(roomQuestions.length);
     showToast(`Đã thêm Câu ${roomQuestions.length + 1} mới vào phòng! Cô có thể nhập nội dung và chọn đáp án.`);
   };
 
@@ -692,7 +718,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
       let singleCorrect = 0;
       singleQuestions.forEach((q) => {
         const studentAns = singleAnswers[q.id];
-        if (studentAns && studentAns.trim().toUpperCase() === q.correctAnswer.trim().toUpperCase()) {
+        if (studentAns && q.correctAnswer && studentAns.trim().toUpperCase() === q.correctAnswer.trim().toUpperCase()) {
           singleCorrect++;
         }
       });
@@ -744,8 +770,8 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
         blankSlotsTotal += slots.length;
         slots.forEach((slot) => {
           const typed = (userAns[slot.blankLabel] || '').trim().toLowerCase();
-          const expected = slot.correctWord.trim().toLowerCase();
-          if (typed && (typed === expected || expected.includes(typed))) {
+          const expected = (slot.correctWord || '').trim().toLowerCase();
+          if (typed && expected && (typed === expected || expected.includes(typed))) {
             blankCorrectTotal++;
           }
         });
@@ -1392,114 +1418,134 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
               )}
 
               {/* MODE 1: SINGLE QUESTION FOCUS VIEW */}
-              {displayMode === 'single' && (
-                <div className="max-w-4xl mx-auto space-y-4">
-                  {/* Progress Indicator */}
-                  <div className="flex items-center justify-between text-xs text-slate-500 font-sans pb-2">
-                    <span className="font-bold text-[#073B66] dark:text-sky-300">
-                      Câu {currentQuestionIndex + 1} / {roomQuestions.length}
-                    </span>
-                    <span className="flex items-center gap-2">
-                      <span>Đã làm: <strong>{answeredCount}</strong> / {roomQuestions.length}</span>
-                      <span className="text-slate-300">•</span>
-                      <span>Hoàn thành: <strong>{Math.round((answeredCount / (roomQuestions.length || 1)) * 100)}%</strong></span>
-                    </span>
-                  </div>
+              {displayMode === 'single' && (() => {
+                const safeQuestionIndex = roomQuestions.length > 0
+                  ? Math.min(Math.max(0, currentQuestionIndex), roomQuestions.length - 1)
+                  : 0;
+                const currentQuestion = roomQuestions[safeQuestionIndex];
 
-                  {/* Progress Bar */}
-                  <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
-                    <div
-                      className="bg-[#0878C9] h-full transition-all duration-300"
-                      style={{
-                        width: `${((currentQuestionIndex + 1) / (roomQuestions.length || 1)) * 100}%`,
-                      }}
-                    />
-                  </div>
-
-                  {/* The Current Active Question Card */}
-                  {roomQuestions[currentQuestionIndex] &&
-                    renderQuestionCard(
-                      roomQuestions[currentQuestionIndex],
-                      currentQuestionIndex,
-                      true
-                    )}
-
-                  {/* Bottom Navigation & Submit Actions */}
-                  <div className="flex items-center justify-between pt-4 font-sans border-t border-slate-200 dark:border-slate-700">
-                    <button
-                      onClick={() =>
-                        setCurrentQuestionIndex((prev) => Math.max(0, prev - 1))
-                      }
-                      disabled={currentQuestionIndex === 0}
-                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all"
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                      Câu trước
-                    </button>
-
-                    <div className="flex items-center gap-2">
+                if (!currentQuestion || roomQuestions.length === 0) {
+                  return (
+                    <div className="max-w-4xl mx-auto p-8 text-center bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 space-y-4 font-sans shadow-sm">
+                      <div className="w-12 h-12 rounded-2xl bg-sky-100 text-[#073B66] flex items-center justify-center mx-auto">
+                        <BookOpen className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-base text-slate-900 dark:text-white">
+                          Chưa có câu hỏi nào trong phòng thi này
+                        </h4>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Cô có thể bấm nút bên dưới để thêm câu hỏi đầu tiên vào phòng.
+                        </p>
+                      </div>
                       <button
+                        type="button"
                         onClick={handleAddNewQuestionToRoom}
-                        className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
+                        className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs inline-flex items-center gap-2 cursor-pointer shadow-sm transition-all"
                       >
-                        <Plus className="w-3.5 h-3.5 text-emerald-700" />
-                        Thêm câu mới
-                      </button>
-
-                      {/* Flag for review button */}
-                      <button
-                        onClick={() =>
-                          toggleFlagQuestion(roomQuestions[currentQuestionIndex].id)
-                        }
-                        className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
-                          flaggedQuestionIds.includes(
-                            roomQuestions[currentQuestionIndex].id
-                          )
-                            ? 'bg-amber-100 border-amber-300 text-amber-900 shadow-xs'
-                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 hover:bg-slate-50'
-                        }`}
-                      >
-                        <Flag
-                          className={`w-3.5 h-3.5 ${
-                            flaggedQuestionIds.includes(
-                              roomQuestions[currentQuestionIndex].id
-                            )
-                              ? 'fill-amber-600 text-amber-600'
-                              : 'text-slate-400'
-                          }`}
-                        />
-                        {flaggedQuestionIds.includes(
-                          roomQuestions[currentQuestionIndex].id
-                        )
-                          ? 'Đã gắn cờ'
-                          : 'Gắn cờ'}
+                        <Plus className="w-4 h-4" />
+                        <span>Thêm câu hỏi mới vào phòng</span>
                       </button>
                     </div>
+                  );
+                }
 
-                    {currentQuestionIndex < roomQuestions.length - 1 ? (
+                return (
+                  <div className="max-w-4xl mx-auto space-y-4">
+                    {/* Progress Indicator */}
+                    <div className="flex items-center justify-between text-xs text-slate-500 font-sans pb-2">
+                      <span className="font-bold text-[#073B66] dark:text-sky-300">
+                        Câu {safeQuestionIndex + 1} / {roomQuestions.length}
+                      </span>
+                      <span className="flex items-center gap-2">
+                        <span>Đã làm: <strong>{answeredCount}</strong> / {roomQuestions.length}</span>
+                        <span className="text-slate-300">•</span>
+                        <span>Hoàn thành: <strong>{Math.round((answeredCount / (roomQuestions.length || 1)) * 100)}%</strong></span>
+                      </span>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                      <div
+                        className="bg-[#0878C9] h-full transition-all duration-300"
+                        style={{
+                          width: `${((safeQuestionIndex + 1) / (roomQuestions.length || 1)) * 100}%`,
+                        }}
+                      />
+                    </div>
+
+                    {/* The Current Active Question Card */}
+                    {renderQuestionCard(currentQuestion, safeQuestionIndex, true)}
+
+                    {/* Bottom Navigation & Submit Actions */}
+                    <div className="flex items-center justify-between pt-4 font-sans border-t border-slate-200 dark:border-slate-700">
                       <button
                         onClick={() =>
-                          setCurrentQuestionIndex((prev) =>
-                            Math.min(roomQuestions.length - 1, prev + 1)
-                          )
+                          setCurrentQuestionIndex((prev) => Math.max(0, prev - 1))
                         }
-                        className="px-5 py-2.5 bg-[#0878C9] hover:bg-[#073B66] text-white rounded-xl font-bold flex items-center gap-1.5 shadow-sm cursor-pointer transition-all"
+                        disabled={safeQuestionIndex === 0}
+                        className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all"
                       >
-                        Câu tiếp theo
-                        <ChevronRight className="w-4 h-4" />
+                        <ChevronLeft className="w-4 h-4" />
+                        Câu trước
                       </button>
-                    ) : (
-                      <button
-                        onClick={() => setIsConfirmSubmitOpen(true)}
-                        className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center gap-1.5 shadow-sm cursor-pointer transition-all"
-                      >
-                        <Send className="w-4 h-4" />
-                        Hoàn thành & Nộp bài
-                      </button>
-                    )}
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={handleAddNewQuestionToRoom}
+                          className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
+                        >
+                          <Plus className="w-3.5 h-3.5 text-emerald-700" />
+                          Thêm câu mới
+                        </button>
+
+                        {/* Flag for review button */}
+                        <button
+                          onClick={() => toggleFlagQuestion(currentQuestion.id)}
+                          className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
+                            flaggedQuestionIds.includes(currentQuestion.id)
+                              ? 'bg-amber-100 border-amber-300 text-amber-900 shadow-xs'
+                              : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          <Flag
+                            className={`w-3.5 h-3.5 ${
+                              flaggedQuestionIds.includes(currentQuestion.id)
+                                ? 'fill-amber-600 text-amber-600'
+                                : 'text-slate-400'
+                            }`}
+                          />
+                          {flaggedQuestionIds.includes(currentQuestion.id)
+                            ? 'Đã gắn cờ'
+                            : 'Gắn cờ'}
+                        </button>
+                      </div>
+
+                      {safeQuestionIndex < roomQuestions.length - 1 ? (
+                        <button
+                          onClick={() =>
+                            setCurrentQuestionIndex((prev) =>
+                              Math.min(roomQuestions.length - 1, prev + 1)
+                            )
+                          }
+                          className="px-5 py-2.5 bg-[#0878C9] hover:bg-[#073B66] text-white rounded-xl font-bold flex items-center gap-1.5 shadow-sm cursor-pointer transition-all"
+                        >
+                          Câu tiếp theo
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => setIsConfirmSubmitOpen(true)}
+                          className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center gap-1.5 shadow-sm cursor-pointer transition-all"
+                        >
+                          <Send className="w-4 h-4" />
+                          Hoàn thành & Nộp bài
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* MODE 2: SCROLL VIEW (ALL QUESTIONS ON ONE PAGE) */}
               {displayMode === 'scroll' && (

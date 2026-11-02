@@ -17,6 +17,7 @@ import { OnlineClassroom } from './components/online-room/OnlineClassroom';
 import { StudentSupport } from './components/support/StudentSupport';
 import { SystemSettings } from './components/settings/SystemSettings';
 import { AuthLanding } from './components/auth/AuthLanding';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { Menu, X } from 'lucide-react';
 
 const MainLayout: React.FC = () => {
@@ -139,10 +140,12 @@ const MainLayout: React.FC = () => {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppProvider>
-        <MainLayout />
-      </AppProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <AppProvider>
+          <MainLayout />
+        </AppProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
