@@ -54,8 +54,16 @@ import {
   FileDown,
   ShieldAlert,
   Lock,
+  Eye,
 } from 'lucide-react';
 import { RoomImportWordModal } from './RoomImportWordModal';
+import { initialQuestions as defaultBankQuestions } from '../../data/initialData';
+import {
+  EssayTeacherEditor,
+  EssayStudentWorkspace,
+  EssayScorecardReviewCard,
+  scoreEssayByRubric,
+} from './EssayWorkspace';
 import {
   ExamProctoringPreStartGate,
   ExamProctoringWarningOverlay,
@@ -253,6 +261,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
   const isProctoringEnabled = isStudentTakingExam;
 
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
+  const [studentViewCardIds, setStudentViewCardIds] = useState<Record<string, boolean>>({});
   const [savedQuestionStatus, setSavedQuestionStatus] = useState<Record<string, string>>({});
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -311,7 +320,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
     return Array.from(map.values());
   }, [bankQuestions]);
 
-  // Initial questions for current room
+  // Initial questions for current room (Strictly type-matched; never fall back to wrong room type!)
   const baseQuestionsForRoom: Question[] = useMemo(() => {
     if (initialQuestions && initialQuestions.length > 0 && activeRoomMode === 'all') {
       return initialQuestions;
@@ -321,27 +330,39 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
       const list = combinedQuestionPool.filter(
         (q) => q.type === 'Trắc nghiệm đơn' || q.type === 'Trắc nghiệm'
       );
-      return list.length > 0 ? list : combinedQuestionPool.slice(0, 15);
+      return list.length > 0
+        ? list
+        : defaultBankQuestions.filter(
+            (q) => q.type === 'Trắc nghiệm đơn' || q.type === 'Trắc nghiệm'
+          );
     }
 
     if (activeRoomMode === 'Trắc nghiệm đúng sai') {
       const list = combinedQuestionPool.filter((q) => q.type === 'Trắc nghiệm đúng sai');
-      return list.length > 0 ? list : combinedQuestionPool.slice(0, 4);
+      return list.length > 0
+        ? list
+        : defaultBankQuestions.filter((q) => q.type === 'Trắc nghiệm đúng sai');
     }
 
     if (activeRoomMode === 'Điền từ') {
       const list = combinedQuestionPool.filter((q) => q.type === 'Điền từ');
-      return list.length > 0 ? list : combinedQuestionPool.slice(0, 4);
+      return list.length > 0
+        ? list
+        : defaultBankQuestions.filter((q) => q.type === 'Điền từ');
     }
 
     if (activeRoomMode === 'Nối từ') {
       const list = combinedQuestionPool.filter((q) => q.type === 'Nối từ');
-      return list.length > 0 ? list : combinedQuestionPool.slice(0, 4);
+      return list.length > 0
+        ? list
+        : defaultBankQuestions.filter((q) => q.type === 'Nối từ');
     }
 
     if (activeRoomMode === 'Tự luận') {
       const list = combinedQuestionPool.filter((q) => q.type === 'Tự luận');
-      return list.length > 0 ? list : combinedQuestionPool.slice(0, 2);
+      return list.length > 0
+        ? list
+        : defaultBankQuestions.filter((q) => q.type === 'Tự luận');
     }
 
     // Default 'all' - Comprehensive test
@@ -349,7 +370,8 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
     const tf = combinedQuestionPool.filter((q) => q.type === 'Trắc nghiệm đúng sai').slice(0, 2);
     const blank = combinedQuestionPool.filter((q) => q.type === 'Điền từ').slice(0, 1);
     const match = combinedQuestionPool.filter((q) => q.type === 'Nối từ').slice(0, 1);
-    const essay = combinedQuestionPool.filter((q) => q.type === 'Tự luận').slice(0, 1);
+    const essayPool = combinedQuestionPool.filter((q) => q.type === 'Tự luận');
+    const essay = (essayPool.length > 0 ? essayPool : defaultBankQuestions.filter((q) => q.type === 'Tự luận')).slice(0, 1);
 
     const merged = [...single, ...tf, ...blank, ...match, ...essay];
     return merged.length > 0 ? merged : combinedQuestionPool.slice(0, 12);
@@ -404,6 +426,8 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
       setRoomQuestions(baseQuestionsForRoom);
       setCurrentQuestionIndex(0);
       setSavedQuestionStatus({});
+      setStudentViewCardIds({});
+      setEditingCardId(null);
       setSelectedTopicFilter('all');
       setSelectedLessonFilter('all');
 
@@ -1260,13 +1284,36 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
       };
     }
 
+    const nextFocusedIdx = displayedQuestions.length;
     setRoomQuestions((prev) => {
       const updated = [...prev, newQ];
       return updated;
     });
     setEditingCardId(newId);
+    setStudentViewCardIds((prev) => ({ ...prev, [newId]: false }));
     setIsTeacherMode(true);
-    showToast(`Đã thêm 1 câu mới (Khối ${targetGrade}) vào phòng! Cô có thể nhập nội dung và chọn đáp án.`);
+    setIsSubmitted(false);
+    setCurrentQuestionIndex(nextFocusedIdx);
+    showToast(`Đã thêm 1 câu ${newQ.type} mới (Khối ${targetGrade}) vào phòng! Cô có thể soạn nội dung và biểu điểm ngay.`);
+  };
+
+  const handleSeedSampleEssays = () => {
+    const sampleEssays = defaultBankQuestions.filter((q) => q.type === 'Tự luận');
+    setRoomQuestions((prev) => {
+      const existingIds = new Set(prev.map((q) => q.id));
+      const toAdd = sampleEssays.filter((q) => !existingIds.has(q.id));
+      return [...prev, ...toAdd];
+    });
+    sampleEssays.forEach((q) => {
+      if (!bankQuestions.some((bq) => bq.id === q.id)) {
+        addQuestion(q);
+      }
+    });
+    setSelectedGradeTab('all');
+    setSelectedTopicFilter('all');
+    setSelectedLessonFilter('all');
+    setCurrentQuestionIndex(0);
+    showToast(`Đã nạp ${sampleEssays.length} đề Tự luận chuẩn GDPT 2018 (Khối 10, 11, 12)!`);
   };
 
   // Update a question field in local roomQuestions
@@ -1467,13 +1514,28 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
         <div style="margin-bottom: 15px; font-style: italic; font-size: 11pt;">
           Họ và tên thí sinh: .................................................................................... Lớp: ......................... SBD: ....................
         </div>
+    `;
 
-        <div class="section-heading">PHẦN I. NỘI DUNG CÂU HỎI TRẮC NGHIỆM</div>
+    const isEssayExport =
+      activeRoomMode === 'Tự luận' || questionsToExport.every((q) => q.type === 'Tự luận');
+
+    htmlContent += `
+        <div class="section-heading">${
+          isEssayExport
+            ? 'PHẦN I. ĐỀ KIỂM TRA TỰ LUẬN MÔN LỊCH SỬ'
+            : 'PHẦN I. NỘI DUNG CÂU HỎI ĐỀ THI'
+        }</div>
     `;
 
     questionsToExport.forEach((q, idx) => {
+      const rubricTotal =
+        q.rubricPoints && q.rubricPoints.length > 0
+          ? q.rubricPoints.reduce((acc, r) => acc + (r.points || 0), 0)
+          : 10;
       htmlContent += `<div class="question-box">`;
-      htmlContent += `<div class="question-title">Câu ${idx + 1}. ${q.content || ''}</div>`;
+      htmlContent += `<div class="question-title">Câu ${idx + 1}${
+        q.type === 'Tự luận' ? ` (${rubricTotal.toFixed(1)} điểm)` : ''
+      }. ${q.content || ''}</div>`;
 
       if (q.type === 'Trắc nghiệm đơn' || q.type === 'Trắc nghiệm') {
         const opts = q.options || [];
@@ -1504,7 +1566,10 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
         });
         htmlContent += `</table>`;
       } else if (q.type === 'Tự luận') {
-        htmlContent += `<div style="margin-top: 10px; min-height: 80px; border-bottom: 1px dotted #999;"></div>`;
+        htmlContent += `<div style="margin-top: 8px; height: 22px; border-bottom: 1px dotted #999;"></div>`;
+        htmlContent += `<div style="margin-top: 8px; height: 22px; border-bottom: 1px dotted #999;"></div>`;
+        htmlContent += `<div style="margin-top: 8px; height: 22px; border-bottom: 1px dotted #999;"></div>`;
+        htmlContent += `<div style="margin-top: 8px; height: 22px; border-bottom: 1px dotted #999;"></div>`;
       }
 
       htmlContent += `</div>`;
@@ -1512,26 +1577,54 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
 
     htmlContent += `
         <br style="page-break-before: always;" />
-        <div class="section-heading">PHẦN II. BẢNG ĐÁP ÁN & HƯỚNG DẪN GIẢI CHI TIẾT</div>
+        <div class="section-heading">${
+          isEssayExport
+            ? 'PHẦN II. HƯỚNG DẪN CHẤM, DÀN Ý & BIỂU ĐIỂM RUBRIC CHI TIẾT'
+            : 'PHẦN II. BẢNG ĐÁP ÁN & HƯỚNG DẪN GIẢI CHI TIẾT'
+        }</div>
         <table class="key-table">
           <thead>
             <tr>
               <th style="width: 10%;">Câu</th>
-              <th style="width: 25%;">Đáp án chuẩn</th>
-              <th style="width: 65%;">Hướng dẫn giải thích & Kiến thức cốt lõi</th>
+              <th style="width: ${isEssayExport ? '42%' : '25%'};">${
+      isEssayExport ? 'Nội dung dàn ý & Đáp án gợi ý' : 'Đáp án chuẩn'
+    }</th>
+              <th style="width: ${isEssayExport ? '48%' : '65%'};">${
+      isEssayExport ? 'Biểu điểm Rubric & Lưu ý chấm' : 'Hướng dẫn giải thích & Kiến thức cốt lõi'
+    }</th>
             </tr>
           </thead>
           <tbody>
     `;
 
     questionsToExport.forEach((q, idx) => {
-      htmlContent += `
-        <tr>
-          <td style="text-align: center; font-weight: bold;">Câu ${idx + 1}</td>
-          <td style="font-weight: bold; color: #003366;">${q.correctAnswer || '-'}</td>
-          <td>${q.explanation || 'Kiến thức chuẩn theo SGK Lịch sử GDPT 2018.'}</td>
-        </tr>
-      `;
+      if (q.type === 'Tự luận') {
+        const outlineHtml = (q.essayOutline || q.correctAnswer || '-').replace(/\n/g, '<br/>');
+        const rubricHtml =
+          q.rubricPoints && q.rubricPoints.length > 0
+            ? q.rubricPoints
+                .map((r, ri) => `<div>• <strong>Ý ${ri + 1} (${r.points.toFixed(2)}đ):</strong> ${r.criteria}</div>`)
+                .join('')
+            : '';
+        htmlContent += `
+          <tr>
+            <td style="text-align: center; font-weight: bold;">Câu ${idx + 1}</td>
+            <td style="vertical-align: top;">${outlineHtml}</td>
+            <td style="vertical-align: top;">
+              ${rubricHtml}
+              ${q.explanation ? `<div style="margin-top: 6px; font-style: italic;">Lưu ý: ${q.explanation}</div>` : ''}
+            </td>
+          </tr>
+        `;
+      } else {
+        htmlContent += `
+          <tr>
+            <td style="text-align: center; font-weight: bold;">Câu ${idx + 1}</td>
+            <td style="font-weight: bold; color: #003366;">${q.correctAnswer || '-'}</td>
+            <td>${q.explanation || 'Kiến thức chuẩn theo SGK Lịch sử GDPT 2018.'}</td>
+          </tr>
+        `;
+      }
     });
 
     htmlContent += `
@@ -1699,15 +1792,13 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
     // CASE 5: ROOM 5 - TỰ LUẬN
     else if (activeRoomMode === 'Tự luận') {
       let essayTotal = 0;
+      let totalMatchedCriteria = 0;
+      let totalRubricCriteria = 0;
       essayQuestions.forEach((q) => {
-        const text = (essayAnswers[q.id] || '').trim();
-        const wordCount = text ? text.split(/\s+/).length : 0;
-        let qScore = 0;
-        if (wordCount >= 120) qScore = 9.0;
-        else if (wordCount >= 80) qScore = 7.5;
-        else if (wordCount >= 50) qScore = 6.0;
-        else if (wordCount > 15) qScore = 4.5;
-        else qScore = 2.0;
+        const matchRes = scoreEssayByRubric(q, essayAnswers[q.id] || '');
+        let qScore = matchRes.score;
+        totalMatchedCriteria += matchRes.matchedCriteriaCount;
+        totalRubricCriteria += matchRes.totalCriteriaCount;
 
         if (aiFeedbackMap[q.id]) {
           qScore = aiFeedbackMap[q.id].score;
@@ -1720,7 +1811,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
         score: finalScore,
         maxScore: 10.0,
         questionCount: essayQuestions.length,
-        details: `Chấm thử Rubric: ${finalScore.toFixed(1)}/10đ (Đang lưu bài để Cô Thu duyệt chính thức)`,
+        details: `Chấm thử theo Rubric (${totalMatchedCriteria}/${totalRubricCriteria} ý trọng tâm): ${finalScore.toFixed(2)}/10đ — Chờ Cô Thu duyệt chính thức`,
       });
     }
 
@@ -2803,14 +2894,26 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                       )}
 
                       <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
-                        <button
-                          type="button"
-                          onClick={handleResetFilters}
-                          className="px-5 py-2.5 bg-gradient-to-r from-sky-600 to-[#0878C9] hover:from-sky-700 hover:to-[#073B66] text-white rounded-xl font-black text-xs inline-flex items-center gap-2 cursor-pointer shadow-md transition-all active:scale-95"
-                        >
-                          <RotateCcw className="w-4 h-4" />
-                          <span>Xem toàn bộ đề ({roomQuestions.length} câu)</span>
-                        </button>
+                        {roomQuestions.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleResetFilters}
+                            className="px-5 py-2.5 bg-gradient-to-r from-sky-600 to-[#0878C9] hover:from-sky-700 hover:to-[#073B66] text-white rounded-xl font-black text-xs inline-flex items-center gap-2 cursor-pointer shadow-md transition-all active:scale-95"
+                          >
+                            <RotateCcw className="w-4 h-4" />
+                            <span>Xem toàn bộ đề ({roomQuestions.length} câu)</span>
+                          </button>
+                        )}
+                        {activeRoomMode === 'Tự luận' && roomQuestions.length === 0 && (
+                          <button
+                            type="button"
+                            onClick={handleSeedSampleEssays}
+                            className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs inline-flex items-center gap-2 cursor-pointer shadow-sm transition-all"
+                          >
+                            <Sparkles className="w-4 h-4 text-amber-300" />
+                            <span>Nạp bộ đề Tự luận mẫu (Khối 10–12)</span>
+                          </button>
+                        )}
                         {effectiveTeacherMode && (
                           <>
                             <button
@@ -2827,7 +2930,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                               className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs inline-flex items-center gap-2 cursor-pointer shadow-sm transition-all"
                             >
                               <Plus className="w-4 h-4" />
-                              <span>Thêm câu mới</span>
+                              <span>{activeRoomMode === 'Tự luận' ? 'Soạn câu Tự luận mới' : 'Thêm câu mới'}</span>
                             </button>
                           </>
                         )}
@@ -3394,6 +3497,19 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                       </div>
                     )}
 
+                    {/* Essay review with side-by-side outline & interactive rubric checklist */}
+                    {q.type === 'Tự luận' && (
+                      <EssayScorecardReviewCard
+                        question={q}
+                        studentAnswer={essayAnswers[q.id] || ''}
+                        onPracticeAgain={() => {
+                          setIsSubmitted(false);
+                          setSecondsRemaining(durationMinutes > 0 ? durationMinutes * 60 : 0);
+                          setCurrentQuestionIndex(idx);
+                        }}
+                      />
+                    )}
+
                     {/* Teacher Explanation */}
                     {q.explanation && (
                       <div className="p-2.5 rounded-xl bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 text-sky-900 dark:text-sky-200 italic font-serif">
@@ -3490,8 +3606,9 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
     const isMatch = q.type === 'Nối từ';
     const isEssay = q.type === 'Tự luận';
 
+    const isCardPreviewingStudent = !!studentViewCardIds[q.id];
     const isCardEditing =
-      !isStudentTakingExam && (isTeacherMode || editingCardId === q.id);
+      !isStudentTakingExam && !isCardPreviewingStudent && (isTeacherMode || editingCardId === q.id);
     const isCardSaved = !!savedQuestionStatus[q.id];
 
     return (
@@ -3636,19 +3753,42 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
           <div className="flex items-center gap-2">
             {!isStudentTakingExam && (
               <>
-                {/* Toggle Card Edit Mode */}
+                {/* Toggle Card Edit Mode / Back from Student Preview */}
                 <button
                   type="button"
-                  onClick={() => setEditingCardId(editingCardId === q.id ? null : q.id)}
+                  onClick={() => {
+                    if (isCardPreviewingStudent) {
+                      setStudentViewCardIds((prev) => ({ ...prev, [q.id]: false }));
+                      setEditingCardId(q.id);
+                    } else if (isTeacherMode) {
+                      setStudentViewCardIds((prev) => ({ ...prev, [q.id]: true }));
+                    } else {
+                      setEditingCardId(editingCardId === q.id ? null : q.id);
+                    }
+                  }}
                   className={`px-2.5 py-1 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors ${
                     isCardEditing
                       ? 'bg-amber-100 text-amber-900 border border-amber-300'
                       : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
                   }`}
-                  title="Chỉnh sửa nội dung và đáp án câu này"
+                  title={
+                    isCardPreviewingStudent
+                      ? 'Quay lại chế độ Soạn câu này'
+                      : isTeacherMode
+                      ? 'Xem thử góc nhìn Học sinh cho câu này'
+                      : 'Chỉnh sửa nội dung và đáp án câu này'
+                  }
                 >
-                  <Edit3 className="w-3.5 h-3.5" />
-                  <span>{isCardEditing ? 'Đang sửa' : 'Sửa câu này'}</span>
+                  {isCardPreviewingStudent ? <Edit3 className="w-3.5 h-3.5" /> : isCardEditing && isTeacherMode ? <Eye className="w-3.5 h-3.5" /> : <Edit3 className="w-3.5 h-3.5" />}
+                  <span>
+                    {isCardPreviewingStudent
+                      ? 'Sửa lại câu này'
+                      : isCardEditing && isTeacherMode
+                      ? 'Xem góc nhìn HS'
+                      : isCardEditing
+                      ? 'Đang sửa'
+                      : 'Sửa câu này'}
+                  </span>
                 </button>
 
                 {/* Delete Question Button */}
@@ -3673,8 +3813,36 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
 
         {/* Content & Stimulus */}
         <div className="space-y-3">
-          {/* TEACHER EDITING OF QUESTION CONTENT */}
-          {isCardEditing ? (
+          {!isStudentTakingExam && isCardPreviewingStudent && (
+            <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 rounded-xl bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 text-xs font-sans">
+              <span className="font-semibold text-[#073B66] dark:text-sky-200 flex items-center gap-1.5">
+                <Eye className="w-4 h-4 text-[#0878C9]" />
+                Đang xem thử giao diện làm bài của Học sinh cho câu này
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setStudentViewCardIds((prev) => ({ ...prev, [q.id]: false }));
+                  setEditingCardId(q.id);
+                }}
+                className="px-2.5 py-1 rounded-lg bg-[#073B66] text-white font-bold text-[11px] hover:bg-[#0878C9] cursor-pointer"
+              >
+                Quay lại Soạn đề
+              </button>
+            </div>
+          )}
+
+          {/* TEACHER EDITING OF QUESTION CONTENT (Non-essay uses inline textarea; Essay uses EssayTeacherEditor) */}
+          {isCardEditing && isEssay ? (
+            <EssayTeacherEditor
+              question={q}
+              index={idx}
+              onUpdateQuestion={handleUpdateQuestion}
+              onPreviewStudentCard={() =>
+                setStudentViewCardIds((prev) => ({ ...prev, [q.id]: true }))
+              }
+            />
+          ) : isCardEditing ? (
             <div className="space-y-1 font-sans">
               <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-200">
                 {isTF ? 'Đoạn trích tư liệu lịch sử / Nội dung câu hỏi:' : 'Nội dung câu hỏi:'}
@@ -4087,30 +4255,21 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
             </div>
           )}
 
-          {/* 5. DẠNG TỰ LUẬN */}
-          {isEssay && (
-            <div className="space-y-3 font-sans">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-slate-700 dark:text-slate-200">Bài làm tự luận:</span>
-                  <span className="text-[11px] text-slate-500">
-                    Số từ: <strong>{(essayAnswers[q.id] || '').trim() ? (essayAnswers[q.id] || '').trim().split(/\s+/).length : 0}</strong> từ
-                  </span>
-                </div>
-                <textarea
-                  value={essayAnswers[q.id] || ''}
-                  onChange={(e) =>
-                    setEssayAnswers((prev) => ({
-                      ...prev,
-                      [q.id]: e.target.value,
-                    }))
-                  }
-                  rows={8}
-                  placeholder="Em hãy trình bày các luận điểm lịch sử của mình tại đây..."
-                  className="w-full p-4 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl text-xs sm:text-sm font-serif leading-relaxed outline-none focus:ring-2 focus:ring-[#0878C9] select-text"
-                />
-              </div>
-            </div>
+          {/* 5. DẠNG TỰ LUẬN (STUDENT / STUDY WORKSPACE) */}
+          {isEssay && !isCardEditing && (
+            <EssayStudentWorkspace
+              question={q}
+              answerText={essayAnswers[q.id] || ''}
+              onChangeAnswer={(val) =>
+                setEssayAnswers((prev) => ({
+                  ...prev,
+                  [q.id]: val,
+                }))
+              }
+              lastAutoSavedTime={lastAutoSavedTime}
+              isProctoringLocked={isStudentTakingExam && isProctoringLive}
+              isTeacherUser={!isStudentTakingExam}
+            />
           )}
         </div>
 
@@ -4141,8 +4300,11 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
 
             <div className="flex items-center gap-3">
               <div className="text-slate-500 text-xs flex items-center gap-1.5">
-                <span>Đáp án chuẩn:</span>
-                <strong className="text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                <span>{isEssay ? 'Trọng tâm:' : 'Đáp án chuẩn:'}</span>
+                <strong
+                  className="text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 max-w-[260px] truncate"
+                  title={q.correctAnswer}
+                >
                   {q.correctAnswer}
                 </strong>
               </div>

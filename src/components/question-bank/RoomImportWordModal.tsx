@@ -137,7 +137,7 @@ export const RoomImportWordModal: React.FC<RoomImportWordModalProps> = ({
       setPastedText(text);
 
       // Parse questions
-      const res = parseQuestionsFromText(text, selectedGrade, topic, lesson);
+      const res = parseQuestionsFromText(text, selectedGrade, topic, lesson, 'Cao Thị Thu', roomMode);
       const converted: Question[] = res.questions.map((q, idx) => ({
         ...q,
         id: `q_import_${Date.now()}_${idx}`,
@@ -163,7 +163,7 @@ export const RoomImportWordModal: React.FC<RoomImportWordModalProps> = ({
       return;
     }
 
-    const res = parseQuestionsFromText(pastedText, selectedGrade, topic, lesson);
+    const res = parseQuestionsFromText(pastedText, selectedGrade, topic, lesson, 'Cao Thị Thu', roomMode);
     const converted: Question[] = res.questions.map((q, idx) => ({
       ...q,
       id: `q_import_${Date.now()}_${idx}`,
@@ -179,6 +179,24 @@ export const RoomImportWordModal: React.FC<RoomImportWordModalProps> = ({
 
   // Sample text paste helper
   const handlePasteSampleText = () => {
+    if (roomMode === 'Tự luận') {
+      const essaySample = `Câu 1: Phân tích mục tiêu và nguyên tắc hoạt động cốt lõi của tổ chức Liên hợp quốc được ghi trong Hiến chương năm 1945. Theo em, nguyên tắc nào có ý nghĩa quan trọng nhất đối với việc bảo vệ chủ quyền biển đảo Việt Nam hiện nay?
+Dàn ý:
+1. Nêu đúng 4 mục tiêu cơ bản của Liên hợp quốc (3.0 điểm)
+2. Phân tích 5 nguyên tắc hoạt động trong Hiến chương (4.0 điểm)
+3. Chọn nguyên tắc giải quyết tranh chấp bằng biện pháp hòa bình và liên hệ bảo vệ chủ quyền biển đảo Việt Nam (3.0 điểm)
+Giải thích: Nhấn mạnh Hiến chương năm 1945 và Công ước Luật Biển UNCLOS 1982.
+
+Câu 2: Trình bày đóng góp tiêu biểu của quân và dân vùng mỏ Quảng Ninh trong sự nghiệp kháng chiến chống thực dân Pháp và đế quốc Mỹ?
+Dàn ý:
+1. Truyền thống đấu tranh của công nhân Vùng mỏ và chiến thắng Đường 18 (4.0 điểm)
+2. Chiến thắng trận đầu ngày 2 và 5/8/1964 đánh bại không quân Mỹ tại Hạ Long (4.0 điểm)
+3. Ý nghĩa của truyền thống "Kỷ luật và Đồng tâm" đối với học sinh Quảng Ninh hôm nay (2.0 điểm)`;
+      setPastedText(essaySample);
+      showToast('Đã dán văn bản mẫu đề Tự luận kèm Dàn ý & Biểu điểm Rubric!');
+      return;
+    }
+
     const sample = `Câu 1: Chiến dịch nào trong kháng chiến chống thực dân Pháp (1945 - 1954) đã làm phá sản hoàn toàn kế hoạch quân sự Nava?
 A. Chiến dịch Việt Bắc thu - đông 1947.
 B. Chiến dịch Biên giới thu - đông 1950.
@@ -265,32 +283,59 @@ d) Người phụ nữ duy nhất ký vào bản Hiệp định Paris 1973 là b
     showToast('Đã xóa câu khỏi danh sách.');
   };
 
-  // Add 1 blank manual question
+  // Add 1 blank manual question tailored to roomMode
   const handleAddManualSingleQuestion = () => {
-    const newQ: Question = {
-      id: `q_manual_${Date.now()}`,
-      grade: selectedGrade,
-      topic: 'Kiến thức cốt lõi',
-      lesson: 'Ôn tập GDTX',
-      knowledgeDomain: 'Kiến thức trọng tâm',
-      type: roomMode === 'Trắc nghiệm đúng sai' ? 'Trắc nghiệm đúng sai' : 'Trắc nghiệm đơn',
-      cognitiveLevel: 'Nhận biết',
-      content: `Câu hỏi mới cho Khối ${selectedGrade}: Nhập nội dung câu hỏi tại đây...`,
-      options: [
-        'A. Phương án A',
-        'B. Phương án B',
-        'C. Phương án C',
-        'D. Phương án D',
-      ],
-      correctAnswer: 'A',
-      explanation: 'Căn cứ vào SGK Lịch sử GDPT 2018.',
-      source: 'Cô Cao Thị Thu biên soạn',
-      author: 'Cao Thị Thu',
-      updatedAt: new Date().toISOString().split('T')[0],
-    };
+    const today = new Date().toISOString().split('T')[0];
+    const newQ: Question =
+      roomMode === 'Tự luận'
+        ? {
+            id: `q_manual_${Date.now()}`,
+            grade: selectedGrade,
+            topic: topic || 'Kiến thức cốt lõi',
+            lesson: lesson || 'Ôn tập GDTX',
+            knowledgeDomain: 'Tự luận phân tích & vận dụng',
+            type: 'Tự luận',
+            cognitiveLevel: 'Vận dụng',
+            content: `Câu hỏi tự luận mới cho Khối ${selectedGrade}: Nhập đề bài phân tích / đánh giá tại đây...`,
+            essayOutline:
+              'DÀN Ý GỢI Ý TRẢ LỜI:\n1. Hoàn cảnh & vấn đề trọng tâm (3.0 điểm)\n2. Phân tích nội dung & ý nghĩa lịch sử (4.0 điểm)\n3. Bài học kinh nghiệm & liên hệ thực tế (3.0 điểm)',
+            rubricPoints: [
+              { criteria: 'Ý 1: Nêu đúng hoàn cảnh & bối cảnh lịch sử', points: 3.0 },
+              { criteria: 'Ý 2: Phân tích nội dung trọng tâm & ý nghĩa', points: 4.0 },
+              { criteria: 'Ý 3: Rút ra bài học kinh nghiệm & liên hệ', points: 3.0 },
+            ],
+            correctAnswer: 'Trình bày đủ 3 ý theo dàn ý và biểu điểm Rubric.',
+            explanation: 'Căn cứ vào SGK Lịch sử GDPT 2018.',
+            source: 'Cô Cao Thị Thu biên soạn',
+            author: 'Cao Thị Thu',
+            updatedAt: today,
+          }
+        : {
+            id: `q_manual_${Date.now()}`,
+            grade: selectedGrade,
+            topic: topic || 'Kiến thức cốt lõi',
+            lesson: lesson || 'Ôn tập GDTX',
+            knowledgeDomain: 'Kiến thức trọng tâm',
+            type: roomMode === 'Trắc nghiệm đúng sai' ? 'Trắc nghiệm đúng sai' : 'Trắc nghiệm đơn',
+            cognitiveLevel: 'Nhận biết',
+            content: `Câu hỏi mới cho Khối ${selectedGrade}: Nhập nội dung câu hỏi tại đây...`,
+            options: [
+              'A. Phương án A',
+              'B. Phương án B',
+              'C. Phương án C',
+              'D. Phương án D',
+            ],
+            correctAnswer: 'A',
+            explanation: 'Căn cứ vào SGK Lịch sử GDPT 2018.',
+            source: 'Cô Cao Thị Thu biên soạn',
+            author: 'Cao Thị Thu',
+            updatedAt: today,
+          };
 
     setParsedQuestions((prev) => [newQ, ...prev]);
-    showToast(`Đã thêm 1 câu mới cho Khối ${selectedGrade}!`);
+    showToast(
+      `Đã thêm 1 câu ${roomMode === 'Tự luận' ? 'Tự luận' : 'mới'} cho Khối ${selectedGrade}!`
+    );
   };
 
   // Confirm import all questions into the room
@@ -644,6 +689,7 @@ d) Người phụ nữ duy nhất ký vào bản Hiệp định Paris 1973 là b
               {parsedQuestions.map((q, idx) => {
                 const isSingle = q.type === 'Trắc nghiệm đơn' || q.type === 'Trắc nghiệm';
                 const isTF = q.type === 'Trắc nghiệm đúng sai';
+                const isEssay = q.type === 'Tự luận';
                 const isSaved = !!savedStatusMap[q.id];
 
                 return (
@@ -863,6 +909,46 @@ d) Người phụ nữ duy nhất ký vào bản Hiệp định Paris 1973 là b
                             </div>
                           ))}
                         </div>
+                      </div>
+                    )}
+
+                    {/* 3. DẠNG TỰ LUẬN: DÀN Ý & BIỂU ĐIỂM RUBRIC */}
+                    {isEssay && (
+                      <div className="space-y-2.5 pt-1">
+                        <div>
+                          <label className="block text-[11px] font-bold text-rose-900 mb-1">
+                            Dàn ý gợi ý trả lời & Biểu điểm Rubric:
+                          </label>
+                          <textarea
+                            rows={4}
+                            value={q.essayOutline || ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setParsedQuestions((prev) =>
+                                prev.map((item) =>
+                                  item.id === q.id ? { ...item, essayOutline: val } : item
+                                )
+                              );
+                            }}
+                            placeholder="Nhập dàn ý gợi ý các ý chính kèm điểm..."
+                            className="w-full p-2.5 bg-rose-50/40 border border-rose-200 rounded-xl font-serif text-xs leading-relaxed outline-none focus:ring-2 focus:ring-rose-400"
+                          />
+                        </div>
+                        {q.rubricPoints && q.rubricPoints.length > 0 && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                            {q.rubricPoints.map((r, rIdx) => (
+                              <div
+                                key={rIdx}
+                                className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] flex items-center justify-between gap-2"
+                              >
+                                <span className="truncate">{r.criteria}</span>
+                                <span className="font-bold text-rose-700 shrink-0 tabular-nums">
+                                  {r.points}đ
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
 

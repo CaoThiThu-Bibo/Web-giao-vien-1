@@ -1657,6 +1657,94 @@ export const initialQuestions: Question[] = [
     author: 'Cao Thị Thu',
     updatedAt: '2025-03-08',
   },
+  {
+    id: 'q_13_essay_10',
+    grade: 10,
+    topic: 'Chủ đề 5: Một số nền văn minh trên đất nước Việt Nam (trước năm 1858)',
+    lesson: 'Bài 12: Văn minh Đại Việt',
+    knowledgeDomain: 'Thành tựu và ý nghĩa của văn minh Đại Việt',
+    type: 'Tự luận',
+    cognitiveLevel: 'Vận dụng',
+    content: 'Trình bày những thành tựu tiêu biểu của văn minh Đại Việt trên lĩnh vực văn hóa, giáo dục từ thế kỷ X đến thế kỷ XV. Từ đó, nêu trách nhiệm của học sinh hiện nay trong việc giữ gìn và phát huy bản sắc văn hóa dân tộc.',
+    essayOutline: `DÀN Ý GỢI Ý TRẢ LỜI:
+1. Thành tựu tiêu biểu về văn hóa, giáo dục (6.0 điểm):
+- Giáo dục - khoa cử: Năm 1070 dựng Văn Miếu, năm 1075 mở khoa thi đầu tiên, năm 1076 lập Quốc Tử Giám; thời Lê sơ chế độ khoa cử hoàn chỉnh, dựng bia Tiến sĩ (1484).
+- Văn học - nghệ thuật: Văn học chữ Hán và chữ Nôm phát triển rực rỡ ("Nam quốc sơn hà", "Hịch tướng sĩ", "Bình Ngô đại cáo"); nghệ thuật kiến trúc, điêu khắc độc đáo (Thành Thăng Long, chùa Một Cột, trống đồng, nhã nhạc...).
+- Tín ngưỡng, tư tưởng: Dung hòa Tam giáo (Nho - Phật - Đạo) cùng tín ngưỡng thờ cúng tổ tiên, anh hùng dân tộc.
+2. Trách nhiệm của học sinh hiện nay (4.0 điểm):
+- Tích cực học tập lịch sử dân tộc, giữ gìn tiếng Việt và di sản văn hóa địa phương (như các di tích tại Quảng Ninh).
+- Quảng bá nét đẹp văn hóa truyền thống, chọn lọc tiếp thu tinh hoa văn hóa thế giới trong thời đại hội nhập số.`,
+    rubricPoints: [
+      { criteria: 'Nêu đúng hệ thống giáo dục, khoa cử từ thời Lý - Trần đến Lê sơ (Văn Miếu, Quốc Tử Giám, bia Tiến sĩ)', points: 3.0 },
+      { criteria: 'Trình bày thành tựu văn học chữ Hán, chữ Nôm và nghệ thuật, tín ngưỡng đặc sắc', points: 3.0 },
+      { criteria: 'Liên hệ trách nhiệm thiết thực của học sinh trong bảo tồn và phát huy di sản văn hóa dân tộc', points: 4.0 },
+    ],
+    correctAnswer: 'Giáo dục khoa cử (Văn Miếu, Quốc Tử Giám), văn học chữ Hán/Nôm đỉnh cao, dung hòa tín ngưỡng dân gian và trách nhiệm bảo tồn di sản của thế hệ trẻ.',
+    explanation: 'Cần kết hợp dẫn chứng cụ thể (năm 1070, 1075, Bình Ngô đại cáo) với liên hệ bản thân rõ ràng.',
+    source: 'SGK Lịch sử 10 - Chương trình GDPT 2018',
+    author: 'Cao Thị Thu',
+    updatedAt: '2025-03-09',
+  },
+  {
+    id: 'q_14_essay_11',
+    grade: 11,
+    topic: 'Chủ đề 4: Chiến tranh bảo vệ Tổ quốc và chiến tranh giải phóng dân tộc trong lịch sử Việt Nam (trước Cách mạng tháng Tám năm 1945)',
+    lesson: 'Bài 7: Khái quát về chiến tranh bảo vệ Tổ quốc trong lịch sử Việt Nam',
+    knowledgeDomain: 'Nguyên nhân thắng lợi và bài học lịch sử kháng chiến chống ngoại xâm',
+    type: 'Tự luận',
+    cognitiveLevel: 'Vận dụng cao',
+    content: 'Phân tích những nguyên nhân chủ yếu làm nên thắng lợi của các cuộc chiến tranh bảo vệ Tổ quốc trong lịch sử dân tộc Việt Nam (từ thế kỷ X đến thế kỷ XVIII). Theo em, bài học nào có giá trị xuyên suốt nhất đối với sự nghiệp bảo vệ Tổ quốc hiện nay?',
+    essayOutline: `DÀN Ý GỢI Ý TRẢ LỜI:
+1. Nguyên nhân chủ quan quyết định (5.0 điểm):
+- Truyền thống yêu nước nồng nàn, ý chí độc lập tự chủ và tinh thần bất khuất của toàn dân tộc.
+- Khối đại đoàn kết toàn dân ("vua tôi đồng lòng, anh em hòa mục, cả nước chung sức").
+- Đường lối chiến lược, nghệ thuật quân sự sáng tạo: "tiên phát chế nhân", "vườn không nhà trống", "lấy ít địch nhiều, lấy yếu thắng mạnh".
+2. Nguyên nhân khách quan (2.0 điểm):
+- Các cuộc chiến tranh xâm lược của phong kiến phương Bắc là phi nghĩa, gặp khó khăn về địa hình, khí hậu và hậu cần xa xôi.
+3. Bài học xuyên suốt nhất hiện nay (3.0 điểm):
+- Bài học xây dựng và củng cố khối đại đoàn kết toàn dân tộc gắn với thế trận quốc phòng toàn dân, bảo vệ vững chắc chủ quyền biển đảo và biên giới Tổ quốc.`,
+    rubricPoints: [
+      { criteria: 'Phân tích truyền thống yêu nước, khối đại đoàn kết toàn dân và vai trò người chỉ huy tài ba', points: 3.0 },
+      { criteria: 'Nêu rõ nghệ thuật quân sự độc đáo qua các triều đại Lý - Trần - Lam Sơn - Tây Sơn', points: 2.5 },
+      { criteria: 'Phân tích yếu tố khách quan về tính chất phi nghĩa và khó khăn của quân xâm lược', points: 1.5 },
+      { criteria: 'Rút ra bài học xuyên suốt và liên hệ nhiệm vụ bảo vệ Tổ quốc hiện nay', points: 3.0 },
+    ],
+    correctAnswer: 'Thắng lợi bắt nguồn từ lòng yêu nước, đại đoàn kết toàn dân và nghệ thuật quân sự linh hoạt; bài học xuyên suốt nhất là phát huy sức mạnh đại đoàn kết và thế trận lòng dân.',
+    explanation: 'Yêu cầu lấy ít nhất 2 dẫn chứng tiêu biểu từ thời Ngô, Lý, Trần, Lê sơ hoặc Tây Sơn để làm sáng tỏ luận điểm.',
+    source: 'SGK Lịch sử 11 - Chương trình GDPT 2018',
+    author: 'Cao Thị Thu',
+    updatedAt: '2025-03-09',
+  },
+  {
+    id: 'q_15_essay_12_b1',
+    grade: 12,
+    topic: 'Chủ đề 1: Thế giới trong và sau Chiến tranh lạnh',
+    lesson: 'Bài 1: Liên hợp quốc - Mục tiêu, nguyên tắc và vai trò',
+    knowledgeDomain: 'Vai trò của Liên hợp quốc và đóng góp của Việt Nam',
+    type: 'Tự luận',
+    cognitiveLevel: 'Vận dụng',
+    content: 'Phân tích vai trò của tổ chức Liên hợp quốc trong việc duy trì hòa bình và an ninh quốc tế từ năm 1945 đến nay. Là thành viên tích cực của Liên hợp quốc, Việt Nam đã có những đóng góp tiêu biểu nào?',
+    essayOutline: `DÀN Ý GỢI Ý TRẢ LỜI:
+1. Vai trò duy trì hòa bình, an ninh quốc tế của Liên hợp quốc (5.0 điểm):
+- Ngăn chặn được nguy cơ bùng nổ một cuộc chiến tranh thế giới mới kể từ sau năm 1945.
+- Thúc đẩy giải quyết các xung đột, tranh chấp khu vực bằng biện pháp hòa bình; triển khai lực lượng gìn giữ hòa bình tại nhiều điểm nóng.
+- Thúc đẩy quá trình giải trừ quân bị và xây dựng hệ thống công ước quốc tế bảo vệ quyền con người, luật biển (UNCLOS 1982).
+2. Đóng góp tiêu biểu của Việt Nam tại Liên hợp quốc (5.0 điểm):
+- Gia nhập Liên hợp quốc tháng 9/1977, chủ động tham gia xây dựng luật pháp quốc tế.
+- Hai lần đảm nhiệm xuất sắc vai trò Ủy viên không thường trực Hội đồng Bảo an (nhiệm kỳ 2008–2009 và 2020–2021).
+- Cử lực lượng Quân đội nhân dân và Công an nhân dân tham gia sứ mệnh gìn giữ hòa bình Liên hợp quốc (tại Nam Sudan, Cộng hòa Trung Phi...).`,
+    rubricPoints: [
+      { criteria: 'Nêu đúng vai trò ngăn chặn chiến tranh thế giới mới và giải quyết xung đột hòa bình', points: 3.0 },
+      { criteria: 'Nêu vai trò xây dựng luật pháp quốc tế, giải trừ quân bị và lực lượng gìn giữ hòa bình', points: 2.0 },
+      { criteria: 'Trình bày mốc Việt Nam gia nhập (1977) và 2 nhiệm kỳ Ủy viên không thường trực HĐBA', points: 2.5 },
+      { criteria: 'Nêu đóng góp của Việt Nam trong lực lượng gìn giữ hòa bình và hợp tác phát triển bền vững', points: 2.5 },
+    ],
+    correctAnswer: 'Liên hợp quốc góp phần ngăn ngừa chiến tranh thế giới mới, giữ gìn hòa bình và xây dựng luật quốc tế; Việt Nam tích cực tham gia từ 1977, 2 lần giữ ghế Ủy viên không thường trực HĐBA và cử lực lượng gìn giữ hòa bình.',
+    explanation: 'Nhấn mạnh tính thời sự về vị thế quốc tế của Việt Nam khi tham gia gìn giữ hòa bình Liên hợp quốc.',
+    source: 'SGK Lịch sử 12 - Chương trình GDPT 2018',
+    author: 'Cao Thị Thu',
+    updatedAt: '2025-03-09',
+  },
 ];
 
 export const initialMaterials: LearningMaterial[] = [

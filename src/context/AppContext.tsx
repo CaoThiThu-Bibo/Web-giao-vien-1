@@ -290,6 +290,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       });
 
+      // Ensure baseline Điền từ, Nối từ, and Tự luận questions from initialQuestions exist if user storage lacks any
+      const currentValues = Array.from(map.values());
+      const missingTypes: Array<Question['type']> = ['Điền từ', 'Nối từ', 'Tự luận'];
+      missingTypes.forEach((reqType) => {
+        if (!currentValues.some((item) => item.type === reqType)) {
+          initialQuestions
+            .filter((iq) => iq.type === reqType)
+            .forEach((iq) => {
+              if (!map.has(iq.id)) {
+                map.set(iq.id, { ...iq });
+              }
+            });
+        }
+      });
+
       const merged = Array.from(map.values());
       try {
         localStorage.setItem(`${STORAGE_KEY}_questions`, JSON.stringify(merged));

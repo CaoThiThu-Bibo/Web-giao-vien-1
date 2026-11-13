@@ -109,6 +109,7 @@ export interface ParsedQuestionResult {
   totalParsed: number;
   singleCount: number;
   tfCount: number;
+  essayCount?: number;
   errors: string[];
 }
 
@@ -141,7 +142,8 @@ export function parseQuestionsFromText(
   defaultGrade: 10 | 11 | 12 = 10,
   defaultTopic: string = 'Lịch sử Việt Nam',
   defaultLesson: string = 'Chương trình GDNN - GDTX',
-  defaultAuthor: string = 'Cao Thị Thu'
+  defaultAuthor: string = 'Cao Thị Thu',
+  preferredMode?: string
 ): ParsedQuestionResult {
   const lines = rawText
     .split(/\r?\n/)
@@ -201,6 +203,10 @@ export function parseQuestionsFromText(
       /(\n|^)A[.)]\s+/i.test(fullText) &&
       /(\n|^)B[.)]\s+/i.test(fullText);
 
+    // Check if it's an Essay block
+    const hasEssayMarkers =
+      /(\n|^)(Dàn\s*ý|Gợi\s*ý\s*trả\s*lời|Hướng\s*dẫn\s*chấm|Biểu\s*điểm|Rubric)[:.]/i.test(fullText);
+
     if (hasTFSubQuestions) {
       // Parse True/False question
       const parsedTF = parseTrueFalseBlock(block, defaultGrade, defaultTopic, defaultLesson, defaultAuthor);
@@ -217,6 +223,13 @@ export function parseQuestionsFromText(
       } else {
         errors.push(`Khối câu số ${bIdx + 1}: Thiếu phương án lựa chọn hoặc không tìm thấy nội dung.`);
       }
+    } else if (preferredMode === 'Tự luận' || hasEssayMarkers) {
+      const parsedEssay = parseEssayBlock(block, defaultGrade, defaultTopic, defaultLesson, defaultAuthor);
+      if (parsedEssay) {
+        parsedQuestions.push(parsedEssay);
+      } else {
+        errors.push(`Khối câu số ${bIdx + 1}: Chưa có nội dung đề bài Tự luận hợp lệ.`);
+      }
     } else {
       // Check if it's a single question line with options or couldn't parse
       errors.push(`Khối câu số ${bIdx + 1}: Không xác định được dạng (cần có các lựa chọn A, B, C, D hoặc các ý a, b, c, d).`);
@@ -225,9 +238,11 @@ export function parseQuestionsFromText(
 
   let singleCount = 0;
   let tfCount = 0;
+  let essayCount = 0;
   parsedQuestions.forEach((q) => {
     if (q.type === 'Trắc nghiệm đơn') singleCount++;
     if (q.type === 'Trắc nghiệm đúng sai') tfCount++;
+    if (q.type === 'Tự luận') essayCount++;
   });
 
   return {
@@ -235,6 +250,7 @@ export function parseQuestionsFromText(
     totalParsed: parsedQuestions.length,
     singleCount,
     tfCount,
+    essayCount,
     errors,
   };
 }
@@ -422,6 +438,120 @@ function parseTrueFalseBlock(
     correctAnswer: formattedAnswer,
     explanation: explanation || 'Căn cứ vào tư liệu lịch sử chính thống và kiến thức SGK GDPT 2018.',
     source: `Tư liệu Lịch sử & SGK lớp ${grade}`,
+    author,
+  };
+}
+
+/**
+ * Parse an Essay (Tự luận) question block with optional Dàn ý / Rubric / Giải thích
+ */
+function parseEssayBlock(
+  block: string[],
+  grade: 10 | 11 | 12,
+  topic: string,
+  lesson: string,
+  author: string
+): Omit<Question, 'id' | 'updatedAt'> | null {
+  let contentLines: string[] = [];
+  let outlineLines: string[] = [];
+  let explanation = '';
+  let section: 'CONTENT' | 'OUTLINE' | 'EXP' = 'CONTENT';
+
+  for (const rawLine of block) {
+    const cleanLine = rawLine.trim();
+    if (!cleanLine) continue;
+
+    const outlineMatch = cleanLine.match(
+      /^(Dàn\s*ý|Gợi\s*ý\s*trả\s*lời|Hướng\s*dẫn\s*chấm|Biểu\s*điểm|Rubric|Đáp\s*án)[:.]?\s*(.*)$/i
+    );
+    if (outlineMatch) {
+      section = 'OUTLINE';
+      if (outlineMatch[2]?.trim()) {
+        outlineLines.push(outlineMatch[2].trim());
+      }
+      continue;
+    }
+
+    const expMatch = cleanLine.match(/^(Giải\s*thích|Lưu\s*ý)[:.]?\s*(.*)$/i);
+    if (expMatch) {
+      section = 'EXP';
+      if (expMatch[2]?.trim()) {
+        explanation += (explanation ? ' ' : '') + expMatch[2].trim();
+      }
+      continue;
+    }
+
+    if (section === 'CONTENT') {
+      contentLines.push(cleanLine);
+    } else if (section === 'OUTLINE') {
+      outlineLines.push(cleanLine);
+    } else {
+      explanation += (explanation ? ' ' : '') + cleanLine;
+    }
+  }
+
+  const content = contentLines
+    .join('\n')
+    .replace(/^(Câu|Bài)\s*\d+[:.]\s*/i, '')
+    .trim();
+
+  if (!content) return null;
+
+  const essayOutline =
+    outlineLines.join('\n').trim() ||
+    'DÀN Ý GỢI Ý TRẢ LỜI:\n1. Hoàn cảnh & vấn đề lịch sử trọng tâm (3.0 điểm)\n2. Phân tích nội dung chính & ý nghĩa lịch sử (4.0 điểm)\n3. Bài học kinh nghiệm & liên hệ thực tế (3.0 điểm)';
+
+  const rubricItems = outlineLines
+    .filter((l) => /^(\d+[.)]|[-+*•])\s+/.test(l) || /\(\d+(?:[.,]\d+)?\s*(?:đ|điểm)\)/i.test(l))
+    .slice(0, 6)
+    .map((l) => {
+      const ptMatch = l.match(/\((\d+(?:[.,]\d+)?)\s*(?:đ|điểm)\)/i);
+      const pts = ptMatch ? parseFloat(ptMatch[1].replace(',', '.')) : 0;
+      const cleanCriteria = l
+        .replace(/^(\d+[.)]|[-+*•])\s+/, '')
+        .replace(/\(\d+(?:[.,]\d+)?\s*(?:đ|điểm)\)/i, '')
+        .trim();
+      return { criteria: cleanCriteria, points: pts };
+    })
+    .filter((r) => r.criteria.length > 2);
+
+  let rubricPoints = rubricItems;
+  if (rubricPoints.length === 0) {
+    rubricPoints = [
+      { criteria: 'Ý 1: Nêu đúng hoàn cảnh lịch sử và trọng tâm đề bài', points: 3.0 },
+      { criteria: 'Ý 2: Phân tích sâu sắc nội dung chính và ý nghĩa lịch sử', points: 4.0 },
+      { criteria: 'Ý 3: Rút ra bài học kinh nghiệm & liên hệ thực tiễn', points: 3.0 },
+    ];
+  } else if (!rubricPoints.some((r) => r.points > 0)) {
+    const perItem = Math.floor((10 / rubricPoints.length) * 4) / 4;
+    let sum = 0;
+    rubricPoints = rubricPoints.map((r, i) => {
+      if (i === rubricPoints.length - 1) {
+        return { ...r, points: Math.round((10 - sum) * 100) / 100 };
+      }
+      sum += perItem;
+      return { ...r, points: perItem };
+    });
+  } else {
+    rubricPoints = rubricPoints.map((r) => ({
+      ...r,
+      points: r.points > 0 ? r.points : 1.0,
+    }));
+  }
+
+  return {
+    grade,
+    topic,
+    lesson,
+    knowledgeDomain: 'Tự luận phân tích & vận dụng',
+    type: 'Tự luận',
+    cognitiveLevel: 'Vận dụng',
+    content,
+    essayOutline,
+    rubricPoints,
+    correctAnswer: rubricPoints.map((r) => `${r.criteria} (${r.points}đ)`).join('; '),
+    explanation: explanation || 'Trình bày mạch lạc, lập luận chặt chẽ kèm dẫn chứng lịch sử chuẩn SGK.',
+    source: `SGK Lịch sử ${grade} - Chương trình GDPT 2018`,
     author,
   };
 }
