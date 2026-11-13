@@ -61,7 +61,7 @@ export const GraduationExamModal: React.FC<GraduationExamModalProps> = ({
   onClose,
   onImportToBank,
 }) => {
-  const { classes, students, updateStudentScore, exams, addExam, addQuestion } = useApp();
+  const { userRole, classes, students, updateStudentScore, exams, addExam, addQuestion } = useApp();
 
   // Active Tab:
   // 'library' | 'ai-studio' | 'upload' | 'exam' | 'grading' | 'key'
@@ -1914,6 +1914,8 @@ Trọng tâm đổi mới là phát triển nền kinh tế hàng hóa nhiều t
         defaultDurationMinutes={50}
         initialClassId={selectedClassId}
         initialStudentId={selectedStudentId}
+        initialTeacherMode={false}
+        initialProctoringPreview={userRole !== 'student'}
       />
     </Modal>
   );

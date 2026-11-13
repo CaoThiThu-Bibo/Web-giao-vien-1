@@ -139,8 +139,23 @@ export const ClassManagement: React.FC = () => {
   const handleSaveEdit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentClass) return;
+
+    // Tự động đồng bộ Khối lớp và Mã lớp nếu có sự lệch
+    let autoGrade = formData.grade;
+    let autoCode = formData.code.trim().toUpperCase();
+
+    if (autoCode.startsWith('12') || formData.name.includes('12')) autoGrade = 12;
+    else if (autoCode.startsWith('11') || formData.name.includes('11')) autoGrade = 11;
+    else if (autoCode.startsWith('10') || formData.name.includes('10')) autoGrade = 10;
+
+    if (formData.name.includes('12A3') && autoCode.includes('10A3')) {
+      autoCode = '12A3';
+    }
+
     updateClass(currentClass.id, {
       ...formData,
+      code: autoCode,
+      grade: autoGrade,
     });
     setIsEditModalOpen(false);
     setNoticeMessage({

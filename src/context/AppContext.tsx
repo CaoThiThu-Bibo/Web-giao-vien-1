@@ -26,6 +26,7 @@ import {
   initialMaterials,
   initialOnlineAssignments,
 } from '../data/initialData';
+import { standardGraduationExamQuestions } from '../data/graduationExamData';
 import {
   pushAllToSupabase,
   fetchAllFromSupabase,
@@ -94,6 +95,7 @@ interface AppContextType {
   // Schedule & Notifications
   schedule: TeachingSchedule[];
   notifications: SystemNotification[];
+  addNotification: (notif: Omit<SystemNotification, 'id'>) => void;
   markNotificationRead: (id: string) => void;
   clearAllNotifications: () => void;
 
@@ -156,7 +158,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [classes, setClasses] = useState<ClassRoom[]>(() => {
     try {
       const saved = localStorage.getItem(`${STORAGE_KEY}_classes`);
-      return saved ? JSON.parse(saved) : initialClasses;
+      let list: ClassRoom[] = saved ? JSON.parse(saved) : initialClasses;
+
+      // Chuẩn hóa và xóa triệt để hậu tố (10A3) gây nhầm lẫn nếu có trong bộ nhớ
+      list = list.map((c) => {
+        const cleanName = c.name.replace(/\s*\(\s*10A3\s*\)/gi, '').trim();
+        if (cleanName.includes('12A3') || cleanName.includes('12 A3') || (c.code === '10A3' && cleanName.includes('12'))) {
+          return {
+            ...c,
+            code: '12A3',
+            name: 'Lớp 12A3 (GDTX)',
+            grade: 12,
+          };
+        }
+        return {
+          ...c,
+          name: cleanName,
+        };
+      });
+
+      const existingCodes = new Set(list.map((c) => c.code.toUpperCase()));
+      const missing = initialClasses.filter((ic) => !existingCodes.has(ic.code.toUpperCase()));
+      return [...list, ...missing];
     } catch {
       return initialClasses;
     }
@@ -165,7 +188,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [students, setStudents] = useState<Student[]>(() => {
     try {
       const saved = localStorage.getItem(`${STORAGE_KEY}_students`);
-      return saved ? JSON.parse(saved) : initialStudents;
+      let list: Student[] = saved ? JSON.parse(saved) : initialStudents;
+
+      // Chuẩn hóa tự động: Em Sầm Việt Tân (HSTT-0007) luôn đúng Lớp 12A3 (Khối 12)
+      list = list.map((s) => {
+        if (
+          s.fullName.trim().toLowerCase() === 'sầm việt tân' ||
+          s.code === 'HSTT-0007' ||
+          (s.className === '10A3' && (s.classId?.includes('12') || s.grade === 12))
+        ) {
+          return {
+            ...s,
+            className: '12A3',
+            grade: 12,
+            classId: 'cls_12a3',
+          };
+        }
+        return s;
+      });
+
+      return list;
     } catch {
       return initialStudents;
     }
@@ -211,9 +253,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [questions, setQuestions] = useState<Question[]>(() => {
     try {
       const saved = localStorage.getItem(`${STORAGE_KEY}_questions`);
-      return saved ? JSON.parse(saved) : initialQuestions;
+      const rawList: Question[] = saved ? JSON.parse(saved) : initialQuestions;
+
+      // Seed standard graduation questions as baseline with canonical GDPT 2018 metadata
+      const map = new Map<string, Question>();
+      standardGraduationExamQuestions.forEach((sq) => {
+        map.set(sq.id, { ...sq });
+      });
+
+      // Merge saved questions, standardizing topic and lesson if matched
+      rawList.forEach((q) => {
+        if (map.has(q.id)) {
+          const std = map.get(q.id)!;
+          map.set(q.id, {
+            ...q,
+            topic: std.topic || q.topic,
+            lesson: std.lesson || q.lesson,
+            grade: q.grade || std.grade || 12,
+          });
+        } else {
+          // Auto-heal Grade 12 Bài 1 if entered with old title or missing subtitles
+          const isLHQ =
+            (q.grade === 12 || !q.grade) &&
+            ((q.lesson && (q.lesson.includes('Liên Hợp Quốc') || q.lesson.includes('Liên hợp quốc') || q.lesson.includes('Bài 1'))) ||
+              (q.topic && (q.topic.includes('1945') || q.topic.includes('Chiến tranh lạnh'))));
+          if (isLHQ && !q.lesson?.includes('Mục tiêu, nguyên tắc và vai trò')) {
+            map.set(q.id, {
+              ...q,
+              grade: 12,
+              topic: 'Chủ đề 1: Thế giới trong và sau Chiến tranh lạnh',
+              lesson: 'Bài 1: Liên hợp quốc - Mục tiêu, nguyên tắc và vai trò',
+            });
+          } else {
+            map.set(q.id, q);
+          }
+        }
+      });
+
+      const merged = Array.from(map.values());
+      try {
+        localStorage.setItem(`${STORAGE_KEY}_questions`, JSON.stringify(merged));
+      } catch (err) {}
+      return merged;
     } catch {
-      return initialQuestions;
+      return standardGraduationExamQuestions;
     }
   });
 
@@ -338,8 +421,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const cloud = await fetchAllFromSupabase();
         if (cloud.hasData) {
-          if (cloud.classes && cloud.classes.length > 0) setClasses(cloud.classes);
-          if (cloud.students && cloud.students.length > 0) setStudents(cloud.students);
+          if (cloud.classes && cloud.classes.length > 0) {
+            let sanitizedClasses = cloud.classes.map((c) => {
+              if (c.name.includes('12A3') || c.name.includes('12 A3') || (c.code === '10A3' && c.name.includes('12'))) {
+                return { ...c, id: 'cls_12a3', code: '12A3', name: 'Lớp 12A3 (GDTX)', grade: 12 as const };
+              }
+              if (c.code === '10A3') {
+                return { ...c, id: 'cls_10a3', code: '10A3', name: 'Lớp 10A3 (GDTX)', grade: 10 as const };
+              }
+              return c;
+            });
+            if (!sanitizedClasses.some((c) => c.code === '12A3')) {
+              sanitizedClasses.push({
+                id: 'cls_12a3',
+                code: '12A3',
+                name: 'Lớp 12A3 (GDTX)',
+                grade: 12,
+                academicYear: '2024 - 2025',
+                studentCount: 1,
+                headTeacher: 'Cô Cao Thị Thu',
+                room: 'Phòng 303 - Phân hiệu Tiên Yên',
+              });
+            }
+            setClasses(sanitizedClasses);
+          }
+          if (cloud.students && cloud.students.length > 0) {
+            const sanitizedStudents = cloud.students.map((s) => {
+              if (
+                s.fullName.trim().toLowerCase() === 'sầm việt tân' ||
+                s.code === 'HSTT-0007' ||
+                (s.className === '10A3' && (s.classId?.includes('12') || s.grade === 12))
+              ) {
+                return { ...s, className: '12A3', grade: 12 as const, classId: 'cls_12a3' };
+              }
+              return s;
+            });
+            setStudents(sanitizedStudents);
+          }
           if (cloud.exams && cloud.exams.length > 0) setExams(cloud.exams);
           if (cloud.attendanceRecords && cloud.attendanceRecords.length > 0) setAttendanceRecords(cloud.attendanceRecords);
           if (cloud.supportItems && cloud.supportItems.length > 0) setSupportItems(cloud.supportItems);
@@ -470,7 +588,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return;
       }
 
-      const matchingClass = classes.find((c) => c.code === row.className || c.name === row.className) || classes[0];
+      const rawClassName = (row.className || '').trim();
+      let matchingClass = classes.find(
+        (c) =>
+          c.code.toLowerCase().trim() === rawClassName.toLowerCase() ||
+          c.name.toLowerCase().trim() === rawClassName.toLowerCase() ||
+          c.code.toLowerCase().replace(/[\s\-_]/g, '') === rawClassName.toLowerCase().replace(/[\s\-_]/g, '')
+      );
+
+      // Nếu lớp trong file (như 12A3) chưa có sẵn, tự động nhận diện Khối lớp và tạo mới lớp
+      if (!matchingClass && rawClassName) {
+        const gradeMatch = rawClassName.match(/(10|11|12)/);
+        const detectedGrade = gradeMatch ? (parseInt(gradeMatch[1], 10) as 10 | 11 | 12) : 12;
+        const normalizedCode = rawClassName.replace(/^lớp\s*/i, '').trim().toUpperCase();
+
+        const createdClass: ClassRoom = {
+          id: `cls_${normalizedCode.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now()}`,
+          code: normalizedCode,
+          name: `Lớp ${normalizedCode} (GDTX)`,
+          grade: detectedGrade,
+          academicYear: systemConfig.academicYear || '2024 - 2025',
+          studentCount: 1,
+          headTeacher: 'Cô Cao Thị Thu',
+          room: `Phòng học ${normalizedCode} - Phân hiệu Tiên Yên`,
+        };
+        matchingClass = createdClass;
+        setClasses((prev) => {
+          if (prev.some((c) => c.code.toUpperCase() === normalizedCode)) return prev;
+          return [...prev, createdClass];
+        });
+        syncClassToSupabase(createdClass);
+      }
+
+      if (!matchingClass) {
+        matchingClass = classes[0];
+      }
 
       const newStudent: Student = {
         id: `std_${Date.now()}_${idx}`,
@@ -792,6 +944,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Notifications
+  const addNotification = (notif: Omit<SystemNotification, 'id'>) => {
+    const newNotif: SystemNotification = {
+      ...notif,
+      id: `notif_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    };
+    setNotifications((prev) => [newNotif, ...prev]);
+  };
+
   const markNotificationRead = (id: string) => {
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
   };
@@ -1032,6 +1192,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         batchMarkAttendance,
         schedule,
         notifications,
+        addNotification,
         markNotificationRead,
         clearAllNotifications,
         supportItems,

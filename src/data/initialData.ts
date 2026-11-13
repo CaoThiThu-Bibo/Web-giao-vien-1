@@ -48,6 +48,17 @@ export const initialClasses: ClassRoom[] = [
     notes: 'Một số học viên đi làm thêm buổi tối cần hỗ trợ thêm',
   },
   {
+    id: 'cls_10a3',
+    code: '10A3',
+    name: 'Lớp 10A3 (GDTX)',
+    grade: 10,
+    academicYear: '2024 - 2025',
+    studentCount: 0,
+    headTeacher: 'Cô Cao Thị Thu',
+    room: 'Phòng 104 - Phân hiệu Tiên Yên',
+    notes: 'Lớp 10A3 GDTX Tiên Yên',
+  },
+  {
     id: 'cls_11a1',
     code: '11A1',
     name: 'Lớp 11A1 (GDTX)',
@@ -70,6 +81,17 @@ export const initialClasses: ClassRoom[] = [
     notes: 'Cần củng cố kỹ năng phân tích tư liệu lịch sử',
   },
   {
+    id: 'cls_11a4_10',
+    code: '11A4-10',
+    name: 'Lớp 11A4-10 (GDTX)',
+    grade: 11,
+    academicYear: '2024 - 2025',
+    studentCount: 5,
+    headTeacher: 'Cô Cao Thị Thu',
+    room: 'Phòng 204 - Phân hiệu Tiên Yên',
+    notes: 'Lớp 11A4-10 GDTX Tiên Yên',
+  },
+  {
     id: 'cls_12a1',
     code: '12A1',
     name: 'Lớp 12A1 (GDTX)',
@@ -79,6 +101,28 @@ export const initialClasses: ClassRoom[] = [
     headTeacher: 'Cô Vũ Thị Hà',
     room: 'Phòng 301 - Phân hiệu Tiên Yên',
     notes: 'Lớp cuối cấp, đang tập trung ôn thi tốt nghiệp THPT',
+  },
+  {
+    id: 'cls_12a2',
+    code: '12A2',
+    name: 'Lớp 12A2 (GDTX)',
+    grade: 12,
+    academicYear: '2024 - 2025',
+    studentCount: 0,
+    headTeacher: 'Thầy Hoàng Văn Hải',
+    room: 'Phòng 302 - Phân hiệu Tiên Yên',
+    notes: 'Lớp 12A2 GDTX Tiên Yên',
+  },
+  {
+    id: 'cls_12a3',
+    code: '12A3',
+    name: 'Lớp 12A3 (GDTX)',
+    grade: 12,
+    academicYear: '2024 - 2025',
+    studentCount: 1,
+    headTeacher: 'Cô Cao Thị Thu',
+    room: 'Phòng 303 - Phân hiệu Tiên Yên',
+    notes: 'Lớp 12A3 cuối cấp ôn thi tốt nghiệp THPT môn Lịch sử',
   },
 ];
 
@@ -257,6 +301,28 @@ export const initialExams: Exam[] = [
 // 12 Giỏi (8.0-10.0), 20 Khá (6.5-7.9), 11 Trung bình (5.0-6.4), 5 Yếu (< 5.0)
 // Overall Average ~ 7.8
 export const initialStudents: Student[] = [
+  // Class 12A3 (Học sinh cuối cấp lớp Cô Thu)
+  {
+    id: 'std_sam_viet_tan_12a3',
+    code: 'HSTT-0007',
+    fullName: 'Sầm Việt Tân',
+    gender: 'Nam',
+    dob: '2007-05-15',
+    classId: 'cls_12a3',
+    className: '12A3',
+    grade: 12,
+    academicYear: '2024 - 2025',
+    status: 'Đang học',
+    phone: '0986543210',
+    address: 'Thị trấn Tiên Yên, Quảng Ninh',
+    parentName: 'Sầm Văn Hùng',
+    parentPhone: '0912345678',
+    scores: {},
+    averageScore: 0,
+    rank: 'Trung bình',
+    attendanceStats: { present: 0, late: 0, excused: 0, unexcused: 0 },
+    notes: 'Học sinh lớp 12A3 (GDTX) - Ôn thi tốt nghiệp THPT môn Lịch sử',
+  },
   // Class 10A1 (11 students)
   {
     id: 'std_01',

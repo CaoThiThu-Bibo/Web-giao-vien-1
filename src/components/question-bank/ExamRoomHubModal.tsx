@@ -21,6 +21,7 @@ import {
   Plus,
   Edit3,
   Save,
+  ShieldCheck,
 } from 'lucide-react';
 
 export type ExamRoomKey = 'Trắc nghiệm đơn' | 'Trắc nghiệm đúng sai' | 'Điền từ' | 'Nối từ' | 'Tự luận' | 'all';
@@ -133,7 +134,8 @@ interface ExamRoomHubModalProps {
     durationMinutes?: number,
     classId?: string,
     studentId?: string,
-    isTeacherMode?: boolean
+    isTeacherMode?: boolean,
+    isProctorPreview?: boolean
   ) => void;
 }
 
@@ -248,7 +250,7 @@ export const ExamRoomHubModal: React.FC<ExamRoomHubModalProps> = ({
 
             {/* Quick All-in-One comprehensive test button */}
             <button
-              onClick={() => onSelectRoom('all', 45, selectedClassId, selectedStudentId)}
+              onClick={() => onSelectRoom('all', 45, selectedClassId, selectedStudentId, false, true)}
               className="px-4 py-1.5 bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 text-slate-950 font-black rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer text-xs"
             >
               <Sparkles className="w-3.5 h-3.5 text-slate-900" />
@@ -278,15 +280,34 @@ export const ExamRoomHubModal: React.FC<ExamRoomHubModalProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={() => onSelectRoom('Trắc nghiệm đơn', 15, selectedClassId, selectedStudentId, true)}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95"
+                onClick={() => onSelectRoom('Trắc nghiệm đơn', 15, selectedClassId, selectedStudentId, false, true)}
+                className="px-3.5 py-2 bg-[#073B66] hover:bg-[#0878C9] text-white rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95 whitespace-nowrap shrink-0"
+                title="Xem thử giao diện Giám sát Toàn màn hình & Chống gian lận như học sinh đang dự thi"
+              >
+                <ShieldCheck className="w-4 h-4 text-amber-300" />
+                Thử Giám sát Thí sinh
+              </button>
+              <button
+                type="button"
+                onClick={() => onSelectRoom('Trắc nghiệm đơn', 15, selectedClassId, selectedStudentId, true, false)}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95 whitespace-nowrap shrink-0"
               >
                 <Plus className="w-4 h-4" />
                 Thêm câu hỏi mới ngay
               </button>
+            </div>
+          </div>
+
+          {/* Proctoring Active Notice Banner (Phương án 1) */}
+          <div className="px-4 py-2.5 bg-sky-50/80 border border-sky-200 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs font-sans text-[#073B66]">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-[#0878C9] shrink-0" />
+              <span>
+                <strong>Giám sát Toàn màn hình & Chống gian lận (Phương án 1):</strong> Tự động kích hoạt ở cả 5+1 phòng thi khi thí sinh bấm <em>Vào phòng thi</em> (khóa Toàn màn hình, chặn chuyển Tab/copy/F12, cảnh báo lần 1–2, gắn nhãn quy chế từ lần 3).
+              </span>
             </div>
           </div>
 
@@ -368,10 +389,10 @@ export const ExamRoomHubModal: React.FC<ExamRoomHubModalProps> = ({
                       <button
                         type="button"
                         onClick={() =>
-                          onSelectRoom(room.key, room.defaultMinutes, selectedClassId, selectedStudentId, false)
+                          onSelectRoom(room.key, room.defaultMinutes, selectedClassId, selectedStudentId, false, true)
                         }
                         className="w-full py-1.5 px-3 bg-[#0878C9] hover:bg-[#073B66] text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs transition-all cursor-pointer"
-                        title="Vào phòng thi làm bài trực tuyến như học sinh"
+                        title="Vào phòng thi làm bài trực tuyến có Giám sát Toàn màn hình như học sinh"
                       >
                         <Play className="w-3 h-3 fill-white" />
                         <span>Vào phòng thi ({room.defaultMinutes} phút)</span>
@@ -406,7 +427,7 @@ export const ExamRoomHubModal: React.FC<ExamRoomHubModalProps> = ({
                   <div className="pt-3 border-t border-slate-200/80 flex flex-wrap items-center gap-2">
                     <button
                       onClick={() =>
-                        onSelectRoom(room.key, room.defaultMinutes, selectedClassId, selectedStudentId, false)
+                        onSelectRoom(room.key, room.defaultMinutes, selectedClassId, selectedStudentId, false, true)
                       }
                       className="flex-1 min-w-[120px] py-2.5 px-3 bg-[#0878C9] hover:bg-[#073B66] text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer group-hover:shadow-md"
                     >
@@ -479,7 +500,7 @@ export const ExamRoomHubModal: React.FC<ExamRoomHubModalProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => onSelectRoom('all', 45, selectedClassId, selectedStudentId, false)}
+                    onClick={() => onSelectRoom('all', 45, selectedClassId, selectedStudentId, false, true)}
                     className="w-full py-1.5 px-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs transition-all cursor-pointer"
                   >
                     <Play className="w-3 h-3 fill-white" />
@@ -511,7 +532,7 @@ export const ExamRoomHubModal: React.FC<ExamRoomHubModalProps> = ({
 
               <div className="pt-3 border-t border-indigo-200/80 flex flex-wrap items-center gap-2">
                 <button
-                  onClick={() => onSelectRoom('all', 45, selectedClassId, selectedStudentId, false)}
+                  onClick={() => onSelectRoom('all', 45, selectedClassId, selectedStudentId, false, true)}
                   className="flex-1 min-w-[140px] py-2.5 px-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer group-hover:shadow-md"
                 >
                   <Play className="w-3.5 h-3.5 fill-white" />

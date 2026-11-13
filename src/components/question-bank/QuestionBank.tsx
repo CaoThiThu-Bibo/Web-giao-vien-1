@@ -63,6 +63,9 @@ export const QuestionBank: React.FC = () => {
   const [isExamRoomHubOpen, setIsExamRoomHubOpen] = useState(false);
   const [selectedRoomMode, setSelectedRoomMode] = useState<ExamRoomKey>('all');
   const [examModalInitialTeacherMode, setExamModalInitialTeacherMode] = useState(true);
+  const [examModalProctorPreview, setExamModalProctorPreview] = useState(false);
+  const [selectedHubClassId, setSelectedHubClassId] = useState<string>('');
+  const [selectedHubStudentId, setSelectedHubStudentId] = useState<string>('');
   const [isHistoryGamesModalOpen, setIsHistoryGamesModalOpen] = useState(false);
   const [isAutoScore10, setIsAutoScore10] = useState(true);
 
@@ -2203,9 +2206,12 @@ D. Những dự đoán của con người...
       <ExamRoomHubModal
         isOpen={isExamRoomHubOpen}
         onClose={() => setIsExamRoomHubOpen(false)}
-        onSelectRoom={(roomKey, durationMinutes, classId, studentId, isTeacherMode) => {
+        onSelectRoom={(roomKey, durationMinutes, classId, studentId, isTeacherMode, isProctorPreview) => {
           setSelectedRoomMode(roomKey);
+          if (classId) setSelectedHubClassId(classId);
+          if (studentId) setSelectedHubStudentId(studentId);
           setExamModalInitialTeacherMode(!!isTeacherMode);
+          setExamModalProctorPreview(!!isProctorPreview);
           setIsExamRoomHubOpen(false);
           setIsStudentExamModalOpen(true);
         }}
@@ -2217,9 +2223,13 @@ D. Những dự đoán của con người...
         onClose={() => {
           setIsStudentExamModalOpen(false);
           setExamModalInitialTeacherMode(false);
+          setExamModalProctorPreview(false);
         }}
         roomMode={selectedRoomMode}
         initialTeacherMode={examModalInitialTeacherMode}
+        initialProctoringPreview={examModalProctorPreview}
+        initialClassId={selectedHubClassId || undefined}
+        initialStudentId={selectedHubStudentId || undefined}
         examTitle={
           selectedQuestionIds.length > 0
             ? `Bài thi trực tuyến (${selectedQuestionIds.length} câu tuyển chọn) - Môn Lịch sử`

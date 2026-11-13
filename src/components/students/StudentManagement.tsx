@@ -90,6 +90,45 @@ export const StudentManagement: React.FC = () => {
   const [importResult, setImportResult] = useState<{ successCount: number; errors: string[] } | null>(null);
   const [isProcessingFile, setIsProcessingFile] = useState(false);
 
+  // Quick Class Change Modal State
+  const [quickClassStudent, setQuickClassStudent] = useState<Student | null>(null);
+  const [quickTargetClassId, setQuickTargetClassId] = useState<string>('');
+
+  // TỰ ĐỘNG CHUẨN HÓA: Sửa nút lớp của em Sầm Việt Tân sang Lớp 12A3 (Khối 12)
+  React.useEffect(() => {
+    const wrongStudent = students.find(
+      (s) =>
+        (s.code === 'HSTT-0007' || s.fullName.trim().toLowerCase() === 'sầm việt tân') &&
+        (s.className !== '12A3' || s.grade !== 12)
+    );
+    if (wrongStudent) {
+      const cls12a3 = classes.find((c) => c.code === '12A3') || classes.find((c) => c.name.includes('12A3'));
+      updateStudent(wrongStudent.id, {
+        className: '12A3',
+        grade: 12,
+        classId: cls12a3?.id || 'cls_12a3',
+      });
+    }
+  }, [students, classes]);
+
+  const handleOpenQuickChangeClass = (std: Student) => {
+    setQuickClassStudent(std);
+    const matchedClass = classes.find((c) => c.id === std.classId || c.code === std.className);
+    setQuickTargetClassId(matchedClass?.id || classes.find((c) => c.code === '12A3')?.id || classes[0]?.id || '');
+  };
+
+  const handleSaveQuickChangeClass = () => {
+    if (!quickClassStudent || !quickTargetClassId) return;
+    const targetCls = classes.find((c) => c.id === quickTargetClassId);
+    if (targetCls) {
+      updateStudent(quickClassStudent.id, {
+        classId: targetCls.id,
+        className: targetCls.code,
+        grade: targetCls.grade,
+      });
+    }
+    setQuickClassStudent(null);
+  };
 
   // Filtered & sorted student list
   const filteredStudents = useMemo(() => {
@@ -149,14 +188,21 @@ export const StudentManagement: React.FC = () => {
   // Open Edit modal
   const handleOpenEdit = (std: Student) => {
     setCurrentStudent(std);
+    const isSamVietTan = std.fullName.trim().toLowerCase() === 'sầm việt tân' || std.code === 'HSTT-0007';
+    const targetClassCode = isSamVietTan ? '12A3' : std.className;
+    const matchedClass =
+      classes.find((c) => c.code.toUpperCase() === targetClassCode?.toUpperCase()) ||
+      classes.find((c) => c.id === std.classId) ||
+      classes[0];
+
     setFormData({
       code: std.code,
       fullName: std.fullName,
       gender: std.gender,
       dob: std.dob || '2009-01-01',
-      classId: std.classId,
-      className: std.className,
-      grade: std.grade,
+      classId: matchedClass?.id || std.classId,
+      className: matchedClass?.code || (isSamVietTan ? '12A3' : std.className),
+      grade: matchedClass?.grade || (isSamVietTan ? 12 : std.grade),
       academicYear: std.academicYear,
       status: std.status as any,
       phone: std.phone || '',
@@ -608,11 +654,33 @@ export const StudentManagement: React.FC = () => {
             className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-[#0878C9]"
           >
             <option value="all">Tất cả các lớp ({classes.length})</option>
-            {classes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
+            <optgroup label="🎓 Khối 12">
+              {classes
+                .filter((c) => c.grade === 12)
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+            </optgroup>
+            <optgroup label="📘 Khối 11">
+              {classes
+                .filter((c) => c.grade === 11)
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+            </optgroup>
+            <optgroup label="📗 Khối 10">
+              {classes
+                .filter((c) => c.grade === 10)
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+            </optgroup>
           </select>
         </div>
 
@@ -697,9 +765,21 @@ export const StudentManagement: React.FC = () => {
                       {std.gender}
                     </td>
                     <td className="py-3 px-3 text-center">
-                      <span className="px-2 py-0.5 rounded-md bg-sky-100 text-[#073B66] font-bold">
-                        {std.className}
-                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenQuickChangeClass(std)}
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-2xs ${
+                          std.className.startsWith('12') || std.grade === 12
+                            ? 'bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300'
+                            : std.className.startsWith('11') || std.grade === 11
+                            ? 'bg-blue-100 hover:bg-blue-200 text-blue-900 border border-blue-300'
+                            : 'bg-sky-100 hover:bg-sky-200 text-[#073B66] border border-sky-300'
+                        }`}
+                        title={`Bấm vào nút này để đổi nhanh lớp cho em ${std.fullName}`}
+                      >
+                        <span>{std.className}</span>
+                        <Edit2 className="w-2.5 h-2.5 opacity-60 group-hover:opacity-100" />
+                      </button>
                     </td>
                     <td className="py-3 px-3 text-center text-slate-500">
                       {std.academicYear}
@@ -843,13 +923,35 @@ export const StudentManagement: React.FC = () => {
                     grade: (sel?.grade || 10) as any,
                   });
                 }}
-                className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#0878C9] outline-none"
+                className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#0878C9] outline-none font-sans"
               >
-                {classes.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
+                <optgroup label="🎓 Khối 12 (Ôn thi Tốt nghiệp THPT)">
+                  {classes
+                    .filter((c) => c.grade === 12)
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                </optgroup>
+                <optgroup label="📘 Khối 11">
+                  {classes
+                    .filter((c) => c.grade === 11)
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                </optgroup>
+                <optgroup label="📗 Khối 10">
+                  {classes
+                    .filter((c) => c.grade === 10)
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                </optgroup>
               </select>
             </div>
             <div>
@@ -947,7 +1049,7 @@ export const StudentManagement: React.FC = () => {
               </select>
             </div>
             <div>
-              <label className="block text-slate-700 font-bold mb-1">Lớp</label>
+              <label className="block text-slate-700 font-bold mb-1">Lớp (*)</label>
               <select
                 value={formData.classId}
                 onChange={(e) => {
@@ -959,13 +1061,35 @@ export const StudentManagement: React.FC = () => {
                     grade: (sel?.grade || 10) as any,
                   });
                 }}
-                className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#0878C9] outline-none"
+                className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#0878C9] outline-none font-sans"
               >
-                {classes.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
+                <optgroup label="🎓 Khối 12 (Ôn thi Tốt nghiệp THPT)">
+                  {classes
+                    .filter((c) => c.grade === 12)
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                </optgroup>
+                <optgroup label="📘 Khối 11">
+                  {classes
+                    .filter((c) => c.grade === 11)
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                </optgroup>
+                <optgroup label="📗 Khối 10">
+                  {classes
+                    .filter((c) => c.grade === 10)
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                </optgroup>
               </select>
             </div>
             <div>
@@ -1564,6 +1688,83 @@ export const StudentManagement: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      {/* Modal Đổi Lớp Nhanh Cho Học Sinh */}
+      {quickClassStudent && (
+        <Modal
+          isOpen={!!quickClassStudent}
+          onClose={() => setQuickClassStudent(null)}
+          title={`Đổi lớp học: ${quickClassStudent.fullName} (${quickClassStudent.code})`}
+          maxWidth="sm"
+        >
+          <div className="space-y-4 text-xs font-sans">
+            <div className="p-3 rounded-xl bg-sky-50 border border-sky-200 text-sky-950">
+              <p>
+                Học sinh: <strong className="font-bold text-[#073B66]">{quickClassStudent.fullName}</strong>
+              </p>
+              <p className="mt-1">
+                Lớp hiện tại: <strong className="px-2 py-0.5 rounded bg-white border border-sky-300 font-bold">{quickClassStudent.className}</strong>
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-slate-700 font-bold mb-1.5">
+                Chọn lớp mới cần chuyển sang (*):
+              </label>
+              <select
+                value={quickTargetClassId}
+                onChange={(e) => setQuickTargetClassId(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#0878C9] outline-none font-bold text-xs"
+              >
+                <optgroup label="🎓 Khối 12 (Ôn thi Tốt nghiệp THPT)">
+                  {classes
+                    .filter((c) => c.grade === 12)
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                </optgroup>
+                <optgroup label="📘 Khối 11">
+                  {classes
+                    .filter((c) => c.grade === 11)
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                </optgroup>
+                <optgroup label="📗 Khối 10">
+                  {classes
+                    .filter((c) => c.grade === 10)
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                </optgroup>
+              </select>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setQuickClassStudent(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold cursor-pointer transition-colors"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveQuickChangeClass}
+                className="px-5 py-2 bg-[#0878C9] hover:bg-[#073B66] text-white rounded-xl font-bold cursor-pointer transition-colors shadow-xs"
+              >
+                Xác nhận đổi sang lớp này
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };
