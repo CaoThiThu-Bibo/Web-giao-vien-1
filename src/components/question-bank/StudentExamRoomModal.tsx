@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Question, QuestionType, EvaluationLevel } from '../../types';
+import { useAuth } from '../../context/AuthContext';
+import { Question, QuestionType, EvaluationLevel, Student } from '../../types';
 import { standardGraduationExamQuestions } from '../../data/graduationExamData';
 import { ExamRoomKey, EXAM_ROOMS_DATA } from './ExamRoomHubModal';
 import {
@@ -55,6 +56,8 @@ import {
   ShieldAlert,
   Lock,
   Eye,
+  LayoutGrid,
+  Filter,
 } from 'lucide-react';
 import { RoomImportWordModal } from './RoomImportWordModal';
 import { initialQuestions as defaultBankQuestions } from '../../data/initialData';
@@ -241,6 +244,27 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
     deleteQuestion,
     addNotification,
   } = useApp();
+  const { currentUser } = useAuth();
+  const isStudentAccount = userRole === 'student' || currentUser?.role === 'student';
+
+  const [isMobileDevice, setIsMobileDevice] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const coarse = window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
+    const uaMobile = /Mobi|Android|iPhone|iPad|iPod|Zalo|FBAN|FBAV|Messenger/i.test(navigator.userAgent);
+    return coarse || uaMobile || window.innerWidth < 768;
+  });
+  const [isMobileQuestionDrawerOpen, setIsMobileQuestionDrawerOpen] = useState(false);
+  const [isMobileFilterExpanded, setIsMobileFilterExpanded] = useState(false);
+
+  useEffect(() => {
+    const syncViewportType = () => {
+      const coarse = window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
+      const uaMobile = /Mobi|Android|iPhone|iPad|iPod|Zalo|FBAN|FBAV|Messenger/i.test(navigator.userAgent);
+      setIsMobileDevice(coarse || uaMobile || window.innerWidth < 768);
+    };
+    window.addEventListener('resize', syncViewportType);
+    return () => window.removeEventListener('resize', syncViewportType);
+  }, []);
 
   // -------------------------------------------------------------------------
   // 1. ACTIVE ROOM MODE STATE & SWITCHER
@@ -254,9 +278,9 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
   }, [initialProctoringPreview, isOpen]);
 
   // Giáo viên thực sự chỉ khi tài khoản không phải Học sinh và không đang bật Xem thử Thí sinh
-  const effectiveTeacherMode = userRole !== 'student' && isTeacherMode && !isProctorPreview;
+  const effectiveTeacherMode = !isStudentAccount && isTeacherMode && !isProctorPreview;
   // Thí sinh đang làm bài (Học sinh thực tế hoặc Giáo viên đang xem thử góc nhìn Thí sinh)
-  const isStudentTakingExam = userRole === 'student' || isProctorPreview;
+  const isStudentTakingExam = isStudentAccount || isProctorPreview;
   // Kích hoạt Giám sát Toàn màn hình (Phương án 1) cho cả 5+1 phòng thi đối với thí sinh
   const isProctoringEnabled = isStudentTakingExam;
 
@@ -380,39 +404,112 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
   // -------------------------------------------------------------------------
   // STUDENT & CLASS STATE
   // -------------------------------------------------------------------------
+  const matchedLoggedInStudent = useMemo(() => {
+    if (!isStudentAccount || !currentUser) return null;
+    const normalizedName = currentUser.fullName.trim().toLowerCase();
+    return (
+      students.find((s) => s.id === currentUser.id) ||
+      students.find((s) => s.fullName.trim().toLowerCase() === normalizedName) ||
+      null
+    );
+  }, [isStudentAccount, currentUser, students]);
+
+  const inferredStudentClass = useMemo(() => {
+    if (matchedLoggedInStudent) {
+      return classes.find((c) => c.id === matchedLoggedInStudent.classId) || null;
+    }
+    if (currentUser?.title) {
+      const titleLower = currentUser.title.toLowerCase();
+      const byCode = classes.find((c) => titleLower.includes(c.code.toLowerCase()));
+      if (byCode) return byCode;
+      if (titleLower.includes('10')) return classes.find((c) => c.grade === 10) || null;
+      if (titleLower.includes('11')) return classes.find((c) => c.grade === 11) || null;
+      if (titleLower.includes('12')) return classes.find((c) => c.grade === 12) || null;
+    }
+    return classes.find((c) => c.code === '12A3' || c.grade === 12) || classes[0] || null;
+  }, [matchedLoggedInStudent, currentUser, classes]);
+
   const [selectedClassId, setSelectedClassId] = useState<string>(
-    initialClassId || classes.find((c) => c.code === '12A3' || c.grade === 12)?.id || classes[0]?.id || ''
+    initialClassId ||
+      matchedLoggedInStudent?.classId ||
+      inferredStudentClass?.id ||
+      classes.find((c) => c.code === '12A3' || c.grade === 12)?.id ||
+      classes[0]?.id ||
+      ''
   );
   const classStudents = useMemo(
     () => (selectedClassId === 'all' ? students : students.filter((s) => s.classId === selectedClassId)),
     [students, selectedClassId]
   );
   const [selectedStudentId, setSelectedStudentId] = useState<string>(
-    initialStudentId || classStudents[0]?.id || students[0]?.id || ''
+    initialStudentId || matchedLoggedInStudent?.id || classStudents[0]?.id || students[0]?.id || ''
   );
 
   useEffect(() => {
+    if (isStudentAccount) {
+      if (matchedLoggedInStudent) {
+        setSelectedClassId(matchedLoggedInStudent.classId);
+        setSelectedStudentId(matchedLoggedInStudent.id);
+      } else if (inferredStudentClass) {
+        setSelectedClassId(inferredStudentClass.id);
+      }
+      return;
+    }
     if (initialClassId) {
       setSelectedClassId(initialClassId);
     }
-  }, [initialClassId]);
+  }, [initialClassId, isStudentAccount, matchedLoggedInStudent, inferredStudentClass]);
 
   useEffect(() => {
+    if (isStudentAccount) return;
     if (initialStudentId) {
       setSelectedStudentId(initialStudentId);
     }
-  }, [initialStudentId]);
+  }, [initialStudentId, isStudentAccount]);
 
   useEffect(() => {
+    if (isStudentAccount) return;
     if (classStudents.length > 0 && !classStudents.some((s) => s.id === selectedStudentId)) {
       setSelectedStudentId(classStudents[0].id);
     }
-  }, [classStudents, selectedStudentId]);
+  }, [classStudents, selectedStudentId, isStudentAccount]);
 
-  const currentStudent = useMemo(
-    () => students.find((s) => s.id === selectedStudentId) || classStudents[0] || students[0],
-    [students, selectedStudentId, classStudents]
-  );
+  const currentStudent = useMemo<Student | undefined>(() => {
+    if (isStudentAccount && currentUser) {
+      if (matchedLoggedInStudent) return matchedLoggedInStudent;
+      const cls = inferredStudentClass || classes.find((c) => c.id === selectedClassId) || classes[0];
+      return {
+        id: currentUser.id,
+        code: currentUser.username || 'HV-GDTX',
+        fullName: currentUser.fullName,
+        gender: 'Nam',
+        dob: '2008-01-01',
+        classId: cls?.id || selectedClassId || 'cls_12a3',
+        className: cls?.name || currentUser.title || 'Lớp GDTX',
+        grade: cls?.grade || 12,
+        academicYear: '2025-2026',
+        status: 'Đang học',
+        scores: {},
+        attendanceStats: {
+          present: 0,
+          late: 0,
+          excused: 0,
+          unexcused: 0,
+        },
+      };
+    }
+    return students.find((s) => s.id === selectedStudentId) || classStudents[0] || students[0];
+  }, [
+    isStudentAccount,
+    currentUser,
+    matchedLoggedInStudent,
+    inferredStudentClass,
+    classes,
+    selectedClassId,
+    students,
+    selectedStudentId,
+    classStudents,
+  ]);
 
   // MUTABLE ROOM QUESTIONS (Allows adding, editing, saving, deleting in room)
   const [roomQuestions, setRoomQuestions] = useState<Question[]>(() => baseQuestionsForRoom);
@@ -430,9 +527,19 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
       setEditingCardId(null);
       setSelectedTopicFilter('all');
       setSelectedLessonFilter('all');
+      setIsMobileQuestionDrawerOpen(false);
+      setIsMobileFilterExpanded(false);
 
       // Auto-initialize Grade & Class
-      if (initialClassId) {
+      if (isStudentAccount) {
+        if (matchedLoggedInStudent) {
+          setSelectedClassId(matchedLoggedInStudent.classId);
+          setSelectedGradeTab(matchedLoggedInStudent.grade || 12);
+        } else if (inferredStudentClass) {
+          setSelectedClassId(inferredStudentClass.id);
+          setSelectedGradeTab(inferredStudentClass.grade || 12);
+        }
+      } else if (initialClassId) {
         setSelectedClassId(initialClassId);
         const cls = classes.find((c) => c.id === initialClassId);
         if (cls?.grade) {
@@ -466,7 +573,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
     setSelectedLessonFilter('all');
     setCurrentQuestionIndex(0);
 
-    if (grade !== 'all') {
+    if (!isStudentAccount && grade !== 'all') {
       const currentClassObj = classes.find((c) => c.id === selectedClassId);
       if (!currentClassObj || currentClassObj.grade !== grade) {
         const matchingClass = classes.find((c) => c.grade === grade);
@@ -482,6 +589,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
   };
 
   const handleSelectClass = (classId: string) => {
+    if (isStudentAccount) return;
     setSelectedClassId(classId);
     if (classId !== 'all') {
       const cls = classes.find((c) => c.id === classId);
@@ -784,14 +892,19 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
   const recordViolationRef = useRef(recordViolation);
   recordViolationRef.current = recordViolation;
 
+  const desktopFullscreenSupported =
+    !isMobileDevice &&
+    typeof document !== 'undefined' &&
+    !!document.documentElement?.requestFullscreen;
+
   const handleStartProctoredExam = () => {
     initialViewportRef.current = {
       width: window.innerWidth,
       height: window.innerHeight,
     };
-    isRequestingFullscreenRef.current = true;
 
-    if (modalContainerRef.current?.requestFullscreen) {
+    if (desktopFullscreenSupported && modalContainerRef.current?.requestFullscreen) {
+      isRequestingFullscreenRef.current = true;
       modalContainerRef.current
         .requestFullscreen()
         .then(() => {
@@ -808,6 +921,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
         });
     } else {
       isRequestingFullscreenRef.current = false;
+      setFullscreenGranted(false);
     }
 
     setIsExamSessionStarted(true);
@@ -819,9 +933,13 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
       width: window.innerWidth,
       height: window.innerHeight,
     };
-    isRequestingFullscreenRef.current = true;
 
-    if (modalContainerRef.current?.requestFullscreen && !document.fullscreenElement) {
+    if (
+      desktopFullscreenSupported &&
+      modalContainerRef.current?.requestFullscreen &&
+      !document.fullscreenElement
+    ) {
+      isRequestingFullscreenRef.current = true;
       modalContainerRef.current
         .requestFullscreen()
         .then(() => {
@@ -898,6 +1016,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
 
     let resizeTimer: ReturnType<typeof setTimeout> | null = null;
     const handleResize = () => {
+      if (isMobileDevice) return;
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
         if (isRequestingFullscreenRef.current) return;
@@ -1001,7 +1120,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
       window.removeEventListener('keydown', handleKeyDownBlock, true);
       window.removeEventListener('keyup', handleKeyUpPrintScreen, true);
     };
-  }, [isProctoringLive, fullscreenGranted]);
+  }, [isProctoringLive, fullscreenGranted, isMobileDevice]);
 
   // Timer Tick - CHỈ CHẠY CHO HỌC SINH ĐANG LÀM BÀI SAU KHI BẮT ĐẦU PHIÊN THI
   useEffect(() => {
@@ -2118,34 +2237,34 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
       {/* 1. TOP STICKY HEADER: EXAM INFO, ROOM SWITCHER & CONTROLS           */}
       {/* ------------------------------------------------------------------- */}
       <header
-        className={`px-4 py-2.5 border-b shrink-0 flex flex-col gap-2 ${
+        className={`px-3 sm:px-4 py-2 border-b shrink-0 flex flex-col gap-1.5 sm:gap-2 ${
           theme === 'dark' ? 'bg-[#141820] border-slate-700' : 'bg-white/95 border-slate-200'
         } backdrop-blur-md shadow-xs no-print`}
       >
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3">
           {/* Title & Student Info */}
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#073B66] to-[#0878C9] text-white flex items-center justify-center font-bold shadow-xs">
-              <Award className="w-5 h-5 text-amber-300" />
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-[#073B66] to-[#0878C9] text-white flex items-center justify-center font-bold shadow-xs shrink-0">
+              <Award className="w-4 h-4 sm:w-5 sm:h-5 text-amber-300" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-sans text-[11px] font-bold px-2 py-0.5 rounded-full bg-sky-100 text-[#073B66]">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                <span className="font-sans text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-md bg-sky-100 text-[#073B66] shrink-0">
                   GDTX Tiên Yên
                 </span>
-                <span className="font-sans text-[11px] font-medium text-slate-500">
+                <span className="font-sans text-[11px] font-medium text-slate-500 truncate">
                   {isStudentTakingExam ? (
                     <>
-                      Học viên: <strong>{currentStudent?.fullName || 'Học viên'}</strong> {currentStudent?.code ? `(${currentStudent.code})` : ''}
+                      Học viên: <strong>{currentStudent?.fullName || 'Học viên'}</strong>
                     </>
                   ) : (
                     <>
-                      Tài khoản: <strong>Cô Cao Thị Thu</strong> (Giáo viên Lịch sử)
+                      Tài khoản: <strong>Cô Cao Thị Thu</strong>
                     </>
                   )}
                 </span>
               </div>
-              <h2 className="text-sm sm:text-base font-bold truncate max-w-[280px] sm:max-w-lg font-sans">
+              <h2 className="text-xs sm:text-base font-bold truncate max-w-[200px] sm:max-w-lg font-sans">
                 {computedRoomTitle}
               </h2>
             </div>
@@ -2153,16 +2272,16 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
 
           {/* Center: Smart Countdown Timer & Proctoring Status (CHỈ HIỂN THỊ ĐỐI VỚI THÍ SINH LÀM BÀI) */}
           {isStudentTakingExam ? (
-            <div className="flex flex-wrap items-center gap-2 font-sans">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 font-sans">
               <div
-                className={`px-3 py-1.5 rounded-xl border flex items-center gap-2 font-bold transition-all ${timerStatusColor}`}
+                className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border flex items-center gap-1.5 sm:gap-2 font-bold transition-all ${timerStatusColor}`}
               >
-                <Clock className="w-4 h-4 shrink-0" />
+                <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
                 <div className="flex flex-col text-left">
-                  <span className="text-[10px] uppercase font-bold tracking-wider opacity-80">
+                  <span className="hidden sm:block text-[10px] uppercase font-bold tracking-wider opacity-80">
                     {durationMinutes === 0 ? 'Thời gian' : 'Thời gian còn lại'}
                   </span>
-                  <span className="text-base font-black tracking-wider leading-none tabular-nums">
+                  <span className="text-sm sm:text-base font-black tracking-wider leading-none tabular-nums">
                     {formattedTime}
                   </span>
                 </div>
@@ -2171,21 +2290,22 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
               {/* Proctoring Live Indicator */}
               {isExamSessionStarted && !isSubmitted && (
                 <div
-                  className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-2 tabular-nums whitespace-nowrap shrink-0 ${
+                  className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border text-[11px] sm:text-xs font-bold flex items-center gap-1.5 tabular-nums whitespace-nowrap shrink-0 ${
                     proctoringViolations.length === 0
                       ? 'bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-300'
                       : proctoringViolations.length < 3
                       ? 'bg-amber-50 border-amber-300 text-amber-900 dark:bg-amber-950/40 dark:border-amber-700 dark:text-amber-300'
                       : 'bg-rose-50 border-rose-300 text-rose-900 dark:bg-rose-950/40 dark:border-rose-700 dark:text-rose-300'
                   }`}
-                  title="Chế độ Giám sát Toàn màn hình (Phương án 1) đang hoạt động"
+                  title="Chế độ Giám sát phòng thi đang hoạt động"
                 >
                   {proctoringViolations.length >= 3 ? (
-                    <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
+                    <ShieldAlert className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-600 shrink-0" />
                   ) : (
-                    <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <ShieldCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 shrink-0" />
                   )}
-                  <span>Giám sát: {proctoringViolations.length} vi phạm</span>
+                  <span className="hidden sm:inline">Giám sát:</span>
+                  <span>{proctoringViolations.length} vi phạm</span>
                 </div>
               )}
 
@@ -2370,10 +2490,10 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
               </button>
             </div>
 
-            {/* Fullscreen Toggle */}
+            {/* Fullscreen Toggle (Desktop only) */}
             <button
               onClick={toggleFullscreen}
-              className="p-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl text-slate-600 dark:text-slate-300 cursor-pointer transition-colors"
+              className="hidden md:inline-flex p-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl text-slate-600 dark:text-slate-300 cursor-pointer transition-colors"
               title="Toàn màn hình"
             >
               {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
@@ -2385,7 +2505,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                 exitFullscreenSafely();
                 onClose();
               }}
-              className="p-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 rounded-xl cursor-pointer transition-colors"
+              className="min-h-[38px] min-w-[38px] sm:min-h-0 sm:min-w-0 p-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 rounded-xl cursor-pointer transition-colors flex items-center justify-center"
               title="Đóng phòng thi"
             >
               <X className="w-4 h-4" />
@@ -2486,7 +2606,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
       {/* ------------------------------------------------------------------- */}
       {/* 2. MAIN BODY: EXAM QUESTIONS OR TEACHER EDIT MODE                   */}
       {/* ------------------------------------------------------------------- */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
         {!isSubmitted && isProctoringEnabled && !isExamSessionStarted ? (
           <ExamProctoringPreStartGate
             roomTitle={computedRoomTitle}
@@ -2500,10 +2620,11 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
             durationMinutes={durationMinutes}
             questionCount={displayedQuestions.length || roomQuestions.length}
             theme={theme}
-            isTeacherPreview={isProctorPreview && userRole !== 'student'}
+            isTeacherPreview={isProctorPreview && !isStudentAccount}
+            isMobileDevice={isMobileDevice}
             onStartExam={handleStartProctoredExam}
             onCancel={() => {
-              if (isProctorPreview && userRole !== 'student') {
+              if (isProctorPreview && !isStudentAccount) {
                 setIsProctorPreview(false);
                 setIsTeacherMode(true);
               } else {
@@ -2516,7 +2637,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
           <>
             {/* Left Area: Questions Render Container */}
             <main
-              className={`flex-1 overflow-y-auto p-4 sm:p-6 relative ${
+              className={`flex-1 overflow-y-auto p-3 sm:p-6 pb-8 md:pb-6 relative ${
                 isProctoringLive ? 'select-none' : ''
               }`}
             >
@@ -2597,21 +2718,51 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                 </div>
               )}
 
-              {/* THANH ĐIỀU HƯỚNG THÔNG MINH 3 TẦNG: KHỐI -> LỚP -> BÀI HỌC (HIỂN THỊ CẢ CHO HỌC SINH VÀ GIÁO VIÊN) */}
+              {/* THANH ĐIỀU HƯỚNG THÔNG MINH 3 TẦNG: KHỐI -> LỚP -> BÀI HỌC (THU GỌN MẶC ĐỊNH TRÊN ĐIỆN THOẠI) */}
               <div
-                className={`max-w-4xl mx-auto mb-5 p-3.5 sm:p-4 rounded-2xl font-sans text-xs shadow-sm space-y-3 transition-all ${
+                className={`max-w-4xl mx-auto mb-4 sm:mb-5 p-3 sm:p-4 rounded-2xl font-sans text-xs shadow-sm transition-all ${
                   effectiveTeacherMode
                     ? 'bg-white/95 dark:bg-slate-800/90 border-2 border-amber-300 dark:border-amber-700'
                     : 'bg-gradient-to-r from-sky-50/90 via-white to-blue-50/80 dark:from-slate-850 dark:via-slate-800 dark:to-slate-850 border-2 border-[#0878C9]/40 dark:border-sky-700/60'
                 }`}
               >
-                {/* Header for Student Mode */}
+                {/* Compact Mobile Filter Summary Bar (< md) */}
+                <div className="flex md:hidden items-center justify-between gap-2">
+                  <div className="min-w-0 flex items-center gap-2">
+                    <Filter className="w-4 h-4 text-[#0878C9] shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-bold text-[#073B66] dark:text-sky-300 truncate">
+                        {selectedGradeTab === 'all' ? 'Tất cả khối' : `Khối ${selectedGradeTab}`}
+                        {' · '}
+                        {selectedLessonFilter !== 'all' ? selectedLessonFilter : 'Tất cả bài học'}
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                        Đang hiển thị {displayedQuestions.length}/{roomQuestions.length} câu
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsMobileFilterExpanded((prev) => !prev)}
+                    className="min-h-[40px] px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-sky-200 dark:border-slate-600 text-xs font-bold text-[#073B66] dark:text-sky-200 flex items-center gap-1.5 shrink-0 cursor-pointer shadow-2xs"
+                  >
+                    <span>{isMobileFilterExpanded ? 'Thu gọn' : 'Chọn Khối · Bài'}</span>
+                    {isMobileFilterExpanded ? (
+                      <ChevronUp className="w-3.5 h-3.5" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </div>
+
+                <div className={`${isMobileFilterExpanded ? 'block pt-3 mt-2 border-t border-sky-100 dark:border-slate-700' : 'hidden md:block'} space-y-3`}>
+                {/* Header for Student Mode (Desktop/Expanded) */}
                 {!effectiveTeacherMode && (
                   <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-sky-100 dark:border-slate-700">
                     <div className="flex items-center gap-2">
                       <span className="px-2.5 py-1 rounded-lg bg-[#073B66] text-white font-black text-[11px] flex items-center gap-1.5 shadow-2xs">
                         <GraduationCap className="w-3.5 h-3.5 text-amber-300" />
-                        🎯 BỘ LỌC ĐỀ ÔN TẬP: CHỌN KHỐI • LỚP • BÀI HỌC
+                        BỘ LỌC ĐỀ ÔN TẬP: CHỌN KHỐI · BÀI HỌC
                       </span>
                       <span className="text-[11px] text-slate-500 hidden sm:inline">
                         Lựa chọn đúng khối lớp và bài học để ôn luyện trọng tâm
@@ -2636,20 +2787,20 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1 mr-1 shrink-0">
                     <GraduationCap className="w-4 h-4 text-[#0878C9]" />
-                    Tầng 1 - Chọn Khối:
+                    Chọn Khối:
                   </span>
 
                   <button
                     type="button"
                     onClick={() => handleSelectGradeTab('all')}
-                    className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 ${
+                    className={`min-h-[40px] sm:min-h-0 px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 ${
                       selectedGradeTab === 'all'
                         ? 'bg-[#073B66] text-white shadow-xs ring-2 ring-[#073B66]/30'
                         : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 border border-slate-200 dark:border-slate-600'
                     }`}
                   >
-                    <span>Tất cả các khối</span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/20 dark:bg-slate-600 text-inherit font-mono font-bold">
+                    <span>Tất cả khối</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-white/20 dark:bg-slate-600 text-inherit font-mono font-bold tabular-nums">
                       {roomQuestions.length}
                     </span>
                   </button>
@@ -2657,14 +2808,14 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                   <button
                     type="button"
                     onClick={() => handleSelectGradeTab(10)}
-                    className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 ${
+                    className={`min-h-[40px] sm:min-h-0 px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 ${
                       selectedGradeTab === 10
                         ? 'bg-emerald-600 text-white shadow-xs ring-2 ring-emerald-500/30'
                         : 'bg-white dark:bg-slate-700 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-50 border border-emerald-200 dark:border-emerald-700/60'
                     }`}
                   >
-                    <span>🟢 Khối 10 (GDTX)</span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200 font-mono font-bold">
+                    <span>Khối 10</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200 font-mono font-bold tabular-nums">
                       {gradeCounts[10]} câu
                     </span>
                   </button>
@@ -2672,14 +2823,14 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                   <button
                     type="button"
                     onClick={() => handleSelectGradeTab(11)}
-                    className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 ${
+                    className={`min-h-[40px] sm:min-h-0 px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 ${
                       selectedGradeTab === 11
                         ? 'bg-blue-600 text-white shadow-xs ring-2 ring-blue-500/30'
                         : 'bg-white dark:bg-slate-700 text-blue-800 dark:text-blue-300 hover:bg-blue-50 border border-blue-200 dark:border-blue-700/60'
                     }`}
                   >
-                    <span>🔵 Khối 11 (GDTX)</span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-900 dark:text-blue-200 font-mono font-bold">
+                    <span>Khối 11</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/60 text-blue-900 dark:text-blue-200 font-mono font-bold tabular-nums">
                       {gradeCounts[11]} câu
                     </span>
                   </button>
@@ -2687,14 +2838,14 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                   <button
                     type="button"
                     onClick={() => handleSelectGradeTab(12)}
-                    className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 ${
+                    className={`min-h-[40px] sm:min-h-0 px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 ${
                       selectedGradeTab === 12
                         ? 'bg-purple-600 text-white shadow-xs ring-2 ring-purple-500/30'
                         : 'bg-white dark:bg-slate-700 text-purple-800 dark:text-purple-300 hover:bg-purple-50 border border-purple-200 dark:border-purple-700/60'
                     }`}
                   >
-                    <span>🟣 Khối 12 (GDTX)</span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/60 text-purple-900 dark:text-purple-200 font-mono font-bold">
+                    <span>Khối 12</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-purple-100 dark:bg-purple-900/60 text-purple-900 dark:text-purple-200 font-mono font-bold tabular-nums">
                       {gradeCounts[12]} câu
                     </span>
                   </button>
@@ -2702,66 +2853,78 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
 
                 {/* TẦNG 2 & TẦNG 3: CHỌN LỚP VÀ CHỌN BÀI HỌC */}
                 <div className="flex flex-wrap items-center gap-2 pt-2.5 border-t border-slate-200/80 dark:border-slate-700/80">
-                  {/* TẦNG 2: NÚT CHỌN LỚP */}
-                  <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl px-2.5 py-1.5 shadow-2xs hover:border-[#0878C9] transition-colors">
-                    <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1 shrink-0">
-                      <School className="w-3.5 h-3.5 text-[#0878C9]" />
-                      <span>🏫 Tầng 2 - Lớp:</span>
-                    </span>
-                    <select
-                      value={selectedClassId}
-                      onChange={(e) => handleSelectClass(e.target.value)}
-                      className="bg-transparent border-none text-xs font-bold text-[#073B66] dark:text-sky-200 outline-none cursor-pointer max-w-[170px] sm:max-w-[210px]"
-                      title="Chọn lớp học tương ứng với khối để đồng bộ kết quả làm bài"
-                    >
-                      <option value="all">-- Tất cả các lớp --</option>
-                      {selectedGradeTab === 'all' ? (
-                        <>
-                          <optgroup label="Khối 12 (GDTX)">
-                            {classes
-                              .filter((c) => c.grade === 12)
-                              .map((c) => (
-                                <option key={c.id} value={c.id}>
-                                  {c.name}
-                                </option>
-                              ))}
-                          </optgroup>
-                          <optgroup label="Khối 11 (GDTX)">
-                            {classes
-                              .filter((c) => c.grade === 11)
-                              .map((c) => (
-                                <option key={c.id} value={c.id}>
-                                  {c.name}
-                                </option>
-                              ))}
-                          </optgroup>
-                          <optgroup label="Khối 10 (GDTX)">
-                            {classes
-                              .filter((c) => c.grade === 10)
-                              .map((c) => (
-                                <option key={c.id} value={c.id}>
-                                  {c.name}
-                                </option>
-                              ))}
-                          </optgroup>
-                        </>
-                      ) : (
-                        classes
-                          .filter((c) => c.grade === selectedGradeTab)
-                          .map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.name}
-                            </option>
-                          ))
-                      )}
-                    </select>
-                  </div>
+                  {/* TẦNG 2: LỚP (KHÓA CỐ ĐỊNH NẾU LÀ TÀI KHOẢN HỌC SINH) */}
+                  {isStudentAccount ? (
+                    <div className="min-h-[40px] sm:min-h-0 flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl px-2.5 py-1.5">
+                      <School className="w-3.5 h-3.5 text-[#0878C9] shrink-0" />
+                      <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                        Lớp:
+                      </span>
+                      <span className="text-xs font-bold text-[#073B66] dark:text-sky-200">
+                        {currentStudent?.className || 'Lớp GDTX'}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="min-h-[40px] sm:min-h-0 flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl px-2.5 py-1.5 shadow-2xs hover:border-[#0878C9] transition-colors">
+                      <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1 shrink-0">
+                        <School className="w-3.5 h-3.5 text-[#0878C9]" />
+                        <span>Lớp:</span>
+                      </span>
+                      <select
+                        value={selectedClassId}
+                        onChange={(e) => handleSelectClass(e.target.value)}
+                        className="bg-transparent border-none text-xs font-bold text-[#073B66] dark:text-sky-200 outline-none cursor-pointer max-w-[170px] sm:max-w-[210px]"
+                        title="Chọn lớp học tương ứng với khối để đồng bộ kết quả làm bài"
+                      >
+                        <option value="all">-- Tất cả các lớp --</option>
+                        {selectedGradeTab === 'all' ? (
+                          <>
+                            <optgroup label="Khối 12 (GDTX)">
+                              {classes
+                                .filter((c) => c.grade === 12)
+                                .map((c) => (
+                                  <option key={c.id} value={c.id}>
+                                    {c.name}
+                                  </option>
+                                ))}
+                            </optgroup>
+                            <optgroup label="Khối 11 (GDTX)">
+                              {classes
+                                .filter((c) => c.grade === 11)
+                                .map((c) => (
+                                  <option key={c.id} value={c.id}>
+                                    {c.name}
+                                  </option>
+                                ))}
+                            </optgroup>
+                            <optgroup label="Khối 10 (GDTX)">
+                              {classes
+                                .filter((c) => c.grade === 10)
+                                .map((c) => (
+                                  <option key={c.id} value={c.id}>
+                                    {c.name}
+                                  </option>
+                                ))}
+                            </optgroup>
+                          </>
+                        ) : (
+                          classes
+                            .filter((c) => c.grade === selectedGradeTab)
+                            .map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.name}
+                              </option>
+                            ))
+                        )}
+                      </select>
+                    </div>
+                  )}
 
                   {/* TẦNG 3: NÚT CHỌN CHƯƠNG / CHỦ ĐỀ */}
-                  <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl px-2.5 py-1.5 shadow-2xs hover:border-[#0878C9] transition-colors">
+                  <div className="min-h-[40px] sm:min-h-0 flex-1 sm:flex-initial flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl px-2.5 py-1.5 shadow-2xs hover:border-[#0878C9] transition-colors">
                     <span className="text-[11px] font-bold text-blue-900 dark:text-sky-300 flex items-center gap-1 shrink-0">
                       <BookOpen className="w-3.5 h-3.5 text-blue-600" />
-                      <span>📚 Tầng 3 - Chủ đề:</span>
+                      <span>Chủ đề:</span>
                     </span>
                     <select
                       value={selectedTopicFilter}
@@ -2770,7 +2933,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                         setSelectedLessonFilter('all');
                         setCurrentQuestionIndex(0);
                       }}
-                      className="bg-transparent border-none text-xs font-bold text-[#073B66] dark:text-sky-200 outline-none max-w-[170px] sm:max-w-[240px] cursor-pointer"
+                      className="bg-transparent border-none text-xs font-bold text-[#073B66] dark:text-sky-200 outline-none w-full sm:w-auto sm:max-w-[240px] cursor-pointer"
                       title="Lọc câu hỏi theo Chương / Chủ đề"
                     >
                       <option value="all">
@@ -2788,10 +2951,10 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                   </div>
 
                   {/* TẦNG 3: NÚT CHỌN BÀI HỌC CỤ THỂ */}
-                  <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl px-2.5 py-1.5 shadow-2xs hover:border-[#0878C9] transition-colors">
+                  <div className="min-h-[40px] sm:min-h-0 flex-1 sm:flex-initial flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl px-2.5 py-1.5 shadow-2xs hover:border-[#0878C9] transition-colors">
                     <span className="text-[11px] font-bold text-emerald-900 dark:text-emerald-300 flex items-center gap-1 shrink-0">
                       <FileText className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>📖 Bài học:</span>
+                      <span>Bài học:</span>
                     </span>
                     <select
                       value={selectedLessonFilter}
@@ -2799,7 +2962,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                         setSelectedLessonFilter(e.target.value);
                         setCurrentQuestionIndex(0);
                       }}
-                      className="bg-transparent border-none text-xs font-bold text-emerald-800 dark:text-emerald-200 outline-none max-w-[170px] sm:max-w-[240px] cursor-pointer"
+                      className="bg-transparent border-none text-xs font-bold text-emerald-800 dark:text-emerald-200 outline-none w-full sm:w-auto sm:max-w-[240px] cursor-pointer"
                       title="Lọc câu hỏi theo từng Bài học cụ thể"
                     >
                       <option value="all">
@@ -2817,23 +2980,24 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                   </div>
 
                   {/* HUY HIỆU HIỂN THỊ TRẠNG THÁI SỐ CÂU HỎI */}
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50/90 dark:bg-slate-800 border border-blue-200 dark:border-blue-900/50 text-blue-950 dark:text-sky-300 font-bold text-xs shadow-2xs">
+                  <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50/90 dark:bg-slate-800 border border-blue-200 dark:border-blue-900/50 text-blue-950 dark:text-sky-300 font-bold text-xs shadow-2xs tabular-nums">
                     <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                    <span>🎯 Đang hiển thị: <strong className="text-blue-700 dark:text-sky-200">{displayedQuestions.length}</strong> / {roomQuestions.length} câu</span>
+                    <span>Đang hiển thị: <strong className="text-blue-700 dark:text-sky-200">{displayedQuestions.length}</strong> / {roomQuestions.length} câu</span>
                   </div>
 
                   {/* NÚT BỎ LỌC NHANH / XEM TOÀN BỘ ĐỀ */}
-                  {(selectedTopicFilter !== 'all' || selectedLessonFilter !== 'all' || selectedGradeTab !== 'all' || selectedClassId !== 'all') && (
+                  {(selectedTopicFilter !== 'all' || selectedLessonFilter !== 'all' || selectedGradeTab !== 'all' || (!isStudentAccount && selectedClassId !== 'all')) && (
                     <button
                       type="button"
                       onClick={handleResetFilters}
-                      className="px-3 py-1.5 bg-gradient-to-r from-sky-500 to-[#0878C9] hover:from-sky-600 hover:to-[#073B66] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-xs active:scale-95"
+                      className="min-h-[40px] sm:min-h-0 px-3 py-1.5 bg-gradient-to-r from-sky-500 to-[#0878C9] hover:from-sky-600 hover:to-[#073B66] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-xs active:scale-95"
                       title="Xóa bộ lọc, hiển thị toàn bộ câu hỏi trong phòng thi"
                     >
                       <RotateCcw className="w-3.5 h-3.5" />
                       <span>Xem toàn bộ đề ({roomQuestions.length} câu)</span>
                     </button>
                   )}
+                </div>
                 </div>
               </div>
 
@@ -2971,14 +3135,14 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                     {/* The Current Active Question Card */}
                     {renderQuestionCard(currentQuestion, safeQuestionIndex, true)}
 
-                    {/* Bottom Navigation & Submit Actions */}
-                    <div className="flex items-center justify-between pt-4 font-sans border-t border-slate-200 dark:border-slate-700">
+                    {/* Bottom Navigation & Submit Actions (Prev/Next shown on md+, Flag shown everywhere) */}
+                    <div className="flex items-center justify-between pt-3 sm:pt-4 font-sans border-t border-slate-200 dark:border-slate-700">
                       <button
                         onClick={() =>
                           setCurrentQuestionIndex((prev) => Math.max(0, prev - 1))
                         }
                         disabled={safeQuestionIndex === 0}
-                        className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all"
+                        className="hidden md:flex px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl font-bold text-xs items-center gap-1.5 cursor-pointer transition-all"
                       >
                         <ChevronLeft className="w-4 h-4" />
                         Câu trước
@@ -3034,7 +3198,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                               Math.min(activeList.length - 1, prev + 1)
                             )
                           }
-                          className="px-5 py-2.5 bg-[#0878C9] hover:bg-[#073B66] text-white rounded-xl font-bold flex items-center gap-1.5 shadow-sm cursor-pointer transition-all"
+                          className="hidden md:flex px-5 py-2.5 bg-[#0878C9] hover:bg-[#073B66] text-white rounded-xl font-bold items-center gap-1.5 shadow-sm cursor-pointer transition-all"
                         >
                           Câu tiếp theo
                           <ChevronRight className="w-4 h-4" />
@@ -3042,7 +3206,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                       ) : isStudentTakingExam ? (
                         <button
                           onClick={() => setIsConfirmSubmitOpen(true)}
-                          className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center gap-1.5 shadow-sm cursor-pointer transition-all"
+                          className="hidden md:flex px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold items-center gap-1.5 shadow-sm cursor-pointer transition-all"
                         >
                           <Send className="w-4 h-4" />
                           Hoàn thành & Nộp bài
@@ -3137,9 +3301,9 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
               </div>
             </main>
 
-            {/* Right Side: Question Navigation Matrix */}
+            {/* Right Side: Question Navigation Matrix (Desktop md+ Sidebar) */}
             <aside
-              className={`w-full md:w-72 border-t md:border-t-0 md:border-l p-4 flex flex-col justify-between shrink-0 font-sans transition-all duration-150 ${
+              className={`hidden md:flex md:w-72 border-l p-4 flex-col justify-between shrink-0 font-sans transition-all duration-150 ${
                 theme === 'dark' ? 'bg-[#141820] border-slate-700' : 'bg-white/80 border-slate-200'
               } ${
                 isProctoringLive && isProctoringWarningOpen
@@ -3227,7 +3391,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                 {/* Room Shortcuts notice */}
                 {activeRoomMode === 'Trắc nghiệm đơn' && (
                   <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-[11px] text-blue-900 dark:text-blue-300">
-                    💡 <strong>Phím tắt:</strong> Bấm <strong>A, B, C, D</strong> để chọn đáp án tức thì!
+                    <strong>Phím tắt:</strong> Bấm <strong>A, B, C, D</strong> để chọn đáp án tức thì!
                   </div>
                 )}
               </div>
@@ -3264,6 +3428,182 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                 )}
               </div>
             </aside>
+
+            {/* Mobile Sticky Bottom Action Bar (< md) */}
+            <div
+              className={`md:hidden shrink-0 border-t px-3 py-2 flex items-center justify-between gap-2 font-sans z-30 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] ${
+                theme === 'dark' ? 'bg-[#141820] border-slate-700' : 'bg-white border-slate-200'
+              } ${
+                isProctoringLive && isProctoringWarningOpen
+                  ? 'filter blur-md pointer-events-none select-none'
+                  : ''
+              }`}
+            >
+              <button
+                type="button"
+                onClick={() => setCurrentQuestionIndex((prev) => Math.max(0, prev - 1))}
+                disabled={currentQuestionIndex === 0 || displayedQuestions.length === 0}
+                className="min-h-[44px] px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl font-bold text-xs flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                <span>Trước</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsMobileQuestionDrawerOpen(true)}
+                className="min-h-[44px] flex-1 px-3 bg-sky-50 hover:bg-sky-100 dark:bg-slate-800 dark:hover:bg-slate-700 border border-sky-200 dark:border-slate-600 text-[#073B66] dark:text-sky-200 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer tabular-nums whitespace-nowrap"
+              >
+                <LayoutGrid className="w-4 h-4 text-[#0878C9] shrink-0" />
+                <span>
+                  Câu {displayedQuestions.length > 0 ? Math.min(currentQuestionIndex + 1, displayedQuestions.length) : 0}/{displayedQuestions.length}
+                </span>
+                <span className="text-[11px] opacity-75">({answeredCount} làm)</span>
+              </button>
+
+              {displayedQuestions.length > 0 && currentQuestionIndex < displayedQuestions.length - 1 ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCurrentQuestionIndex((prev) =>
+                      Math.min(displayedQuestions.length - 1, prev + 1)
+                    )
+                  }
+                  className="min-h-[44px] px-4 bg-[#0878C9] hover:bg-[#073B66] text-white rounded-xl font-bold text-xs flex items-center gap-1 shadow-sm cursor-pointer shrink-0 whitespace-nowrap"
+                >
+                  <span>Tiếp</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              ) : isStudentTakingExam ? (
+                <button
+                  type="button"
+                  onClick={() => setIsConfirmSubmitOpen(true)}
+                  className="min-h-[44px] px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-sm cursor-pointer shrink-0 whitespace-nowrap"
+                >
+                  <Send className="w-4 h-4" />
+                  <span>Nộp bài</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSyncAllToBank}
+                  className="min-h-[44px] px-3.5 bg-[#073B66] hover:bg-[#0878C9] text-white rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-sm cursor-pointer shrink-0 whitespace-nowrap"
+                >
+                  <Save className="w-4 h-4 text-amber-300" />
+                  <span>Lưu đề</span>
+                </button>
+              )}
+            </div>
+
+            {/* Mobile Question Matrix Bottom Sheet (< md) */}
+            {isMobileQuestionDrawerOpen && (
+              <div
+                className="fixed inset-0 z-[65] bg-slate-950/60 backdrop-blur-xs flex items-end md:hidden font-sans"
+                onClick={() => setIsMobileQuestionDrawerOpen(false)}
+              >
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  className={`w-full max-h-[80vh] rounded-t-3xl p-4 pb-6 flex flex-col gap-3 shadow-2xl animate-in slide-in-from-bottom-4 duration-200 ${
+                    theme === 'dark'
+                      ? 'bg-[#141820] text-slate-100 border-t border-slate-700'
+                      : 'bg-white text-slate-900 border-t border-slate-200'
+                  }`}
+                >
+                  <div className="w-10 h-1 bg-slate-300 dark:bg-slate-600 rounded-full mx-auto shrink-0" />
+
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-700">
+                    <div>
+                      <h4 className="font-bold text-sm text-[#073B66] dark:text-sky-300">
+                        Bảng câu hỏi ({displayedQuestions.length} câu)
+                      </h4>
+                      <p className="text-xs text-slate-500 tabular-nums">
+                        Đã làm {answeredCount} / {displayedQuestions.length} câu
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsMobileQuestionDrawerOpen(false)}
+                      className="min-h-[44px] min-w-[44px] rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300 cursor-pointer"
+                      aria-label="Đóng bảng câu hỏi"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-5 gap-2 overflow-y-auto py-1 pr-1">
+                    {displayedQuestions.map((q, idx) => {
+                      const isAnswered = isQuestionAnswered(q);
+                      const isFlagged = flaggedQuestionIds.includes(q.id);
+                      const isCurrent = displayMode === 'single' && currentQuestionIndex === idx;
+
+                      let btnStyle =
+                        'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700';
+                      if (isAnswered) {
+                        btnStyle = 'bg-emerald-600 text-white border-emerald-600 font-bold';
+                      }
+                      if (isFlagged) {
+                        btnStyle = 'bg-amber-400 text-amber-950 border-amber-500 font-bold';
+                      }
+                      if (isCurrent) {
+                        btnStyle += ' ring-2 ring-[#0878C9] border-[#0878C9]';
+                      }
+
+                      return (
+                        <button
+                          key={q.id || idx}
+                          type="button"
+                          onClick={() => {
+                            if (displayMode === 'single') {
+                              setCurrentQuestionIndex(idx);
+                            } else {
+                              document
+                                .getElementById(`q_card_${idx}`)
+                                ?.scrollIntoView({ behavior: 'smooth' });
+                            }
+                            setIsMobileQuestionDrawerOpen(false);
+                          }}
+                          className={`min-h-[44px] rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-center relative tabular-nums ${btnStyle}`}
+                        >
+                          {idx + 1}
+                          {isFlagged && (
+                            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-500 rounded-full" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-4 pt-2 border-t border-slate-200 dark:border-slate-700 text-[11px] text-slate-500">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-3 h-3 rounded bg-emerald-600 shrink-0" />
+                      <span>Đã làm</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-3 h-3 rounded bg-slate-200 border border-slate-300 shrink-0" />
+                      <span>Chưa làm</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-3 h-3 rounded bg-amber-400 border border-amber-500 shrink-0" />
+                      <span>Cần xem lại</span>
+                    </div>
+                  </div>
+
+                  {isStudentTakingExam && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMobileQuestionDrawerOpen(false);
+                        setIsConfirmSubmitOpen(true);
+                      }}
+                      className="min-h-[48px] w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-2xl font-bold text-sm flex items-center justify-center gap-2 shadow-md cursor-pointer"
+                    >
+                      <Send className="w-4 h-4" />
+                      <span>Hoàn thành & Nộp bài thi</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </>
         ) : (
           /* =============================================================== */
@@ -3583,9 +3923,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
         <ExamProctoringWarningOverlay
           violationCount={proctoringViolations.length}
           latestViolation={latestViolation}
-          fullscreenSupported={
-            typeof document !== 'undefined' && !!document.documentElement?.requestFullscreen
-          }
+          fullscreenSupported={desktopFullscreenSupported}
           onResumeExam={handleResumeProctoredExam}
           onRequestSubmitEarly={() => {
             setIsProctoringWarningOpen(false);
@@ -3952,7 +4290,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                             [q.id]: letter,
                           }))
                         }
-                        className={`p-3.5 rounded-2xl border text-left flex items-start gap-3 transition-all cursor-pointer ${
+                        className={`min-h-[48px] p-3.5 rounded-2xl border text-left flex items-start gap-3 transition-all cursor-pointer ${
                           isSelected
                             ? 'bg-sky-50 dark:bg-sky-950/60 border-[#0878C9] ring-2 ring-sky-300 dark:ring-sky-700 shadow-sm'
                             : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-300'
@@ -4081,7 +4419,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                                   }));
                                 }
                               }}
-                              className={`px-4 py-1.5 rounded-xl border text-xs font-black transition-all cursor-pointer ${
+                              className={`min-h-[44px] sm:min-h-[36px] min-w-[76px] px-4 py-1.5 rounded-xl border text-xs font-black transition-all cursor-pointer ${
                                 (isCardEditing ? activeCorrect === true : studentPick === true)
                                   ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs ring-2 ring-emerald-300'
                                   : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 hover:bg-emerald-50 hover:text-emerald-800'
@@ -4106,7 +4444,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                                   }));
                                 }
                               }}
-                              className={`px-4 py-1.5 rounded-xl border text-xs font-black transition-all cursor-pointer ${
+                              className={`min-h-[44px] sm:min-h-[36px] min-w-[76px] px-4 py-1.5 rounded-xl border text-xs font-black transition-all cursor-pointer ${
                                 (isCardEditing ? activeCorrect === false : studentPick === false)
                                   ? 'bg-rose-600 text-white border-rose-600 shadow-xs ring-2 ring-rose-300'
                                   : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 hover:bg-rose-50 hover:text-rose-800'

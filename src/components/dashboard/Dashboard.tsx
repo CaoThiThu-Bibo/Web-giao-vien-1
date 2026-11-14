@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 import {
   Users,
   BookOpen,
@@ -19,6 +20,9 @@ import {
   Sparkles,
   ClipboardCheck,
   CheckCircle2,
+  GraduationCap,
+  ShieldCheck,
+  Clock,
 } from 'lucide-react';
 
 export const Dashboard: React.FC = () => {
@@ -31,9 +35,101 @@ export const Dashboard: React.FC = () => {
     notifications,
     setActiveTab,
     setViewingStudentId,
+    userRole,
+    questions,
+    assignments,
   } = useApp();
+  const { currentUser } = useAuth();
 
   const [currentWeek] = useState('Tuần 24 (10/03 - 16/03/2025)');
+  const isStudentAccount = currentUser?.role === 'student' || userRole === 'student';
+
+  if (isStudentAccount) {
+    const studentName = currentUser?.fullName || 'Học viên';
+    return (
+      <div className="space-y-5 animate-in fade-in duration-200 font-sans">
+        {/* Student Welcome Banner */}
+        <div className="bg-gradient-to-r from-[#073B66] via-[#085a96] to-[#0878C9] text-white rounded-3xl p-5 sm:p-7 shadow-lg relative overflow-hidden">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1.5">
+              <div className="text-xs text-cyan-200 font-medium">
+                Trung tâm GDNN - GDTX TP Quảng Ninh · Phân hiệu Tiên Yên
+              </div>
+              <h2 className="text-xl sm:text-2xl font-bold font-serif tracking-tight">
+                Xin chào em {studentName}!
+              </h2>
+              <p className="text-xs sm:text-sm text-sky-100 max-w-2xl">
+                Chào mừng em đến với Cổng Thi &amp; Ôn Luyện Lịch Sử của cô Cao Thị Thu. Hãy chọn phòng thi hoặc bài tập để bắt đầu học ngay.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab('question-bank')}
+              className="w-full sm:w-auto min-h-[48px] px-5 py-3 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-sm rounded-2xl shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer shrink-0 active:scale-[0.98]"
+            >
+              <GraduationCap className="w-5 h-5" />
+              <span>Vào 5 Phòng Thi Ngay</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Quick Launch Grid for Students */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <button
+            type="button"
+            onClick={() => setActiveTab('question-bank')}
+            className="bg-white rounded-2xl p-5 border border-slate-200 hover:border-[#0878C9] hover:shadow-md transition-all text-left flex flex-col justify-between gap-4 cursor-pointer min-h-[136px]"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="w-11 h-11 rounded-xl bg-sky-100 text-[#073B66] flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-6 h-6" />
+              </div>
+              <span className="text-xs font-bold text-[#0878C9] tabular-nums">{questions.length} câu</span>
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-[#073B66] font-serif">5 Phòng Thi Chuyên Biệt</h3>
+              <p className="text-xs text-slate-500 mt-1">Trắc nghiệm đơn, Đúng/Sai tư liệu, Điền từ, Ghép đôi &amp; Tự luận</p>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('online-room')}
+            className="bg-white rounded-2xl p-5 border border-slate-200 hover:border-emerald-500 hover:shadow-md transition-all text-left flex flex-col justify-between gap-4 cursor-pointer min-h-[136px]"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="w-11 h-11 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                <Clock className="w-6 h-6" />
+              </div>
+              <span className="text-xs font-bold text-emerald-700 tabular-nums">{assignments.length} bài tập</span>
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-[#073B66] font-serif">Bài Tập Trực Tuyến</h3>
+              <p className="text-xs text-slate-500 mt-1">Làm bài tập cô giao và xem kết quả, nhận xét của cá nhân em</p>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('materials')}
+            className="bg-white rounded-2xl p-5 border border-slate-200 hover:border-amber-500 hover:shadow-md transition-all text-left flex flex-col justify-between gap-4 cursor-pointer min-h-[136px]"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="w-11 h-11 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                <BookOpen className="w-6 h-6" />
+              </div>
+              <span className="text-xs font-bold text-amber-700">Khối 10 – 12</span>
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-[#073B66] font-serif">Kho Học Liệu Lịch Sử</h3>
+              <p className="text-xs text-slate-500 mt-1">Tài liệu ôn tập trọng tâm, sơ đồ tư duy và đề cương môn Sử</p>
+            </div>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // Dynamic calculations from actual data
   const totalStudents = students.length;

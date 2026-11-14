@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 import { OnlineAssignment } from '../../types';
 import { Modal } from '../common/Modal';
 import {
@@ -28,6 +29,25 @@ export const OnlineClassroom: React.FC = () => {
     userRole,
     setUserRole,
   } = useApp();
+  const { currentUser } = useAuth();
+
+  const isStudentAccount = currentUser?.role === 'student' || userRole === 'student';
+
+  const loggedInStudent = useMemo(() => {
+    if (!currentUser) {
+      return students[0] || { id: 'st_guest', fullName: 'Học viên', className: 'GDTX' };
+    }
+    const matched = students.find(
+      (s) => s.fullName.trim().toLowerCase() === currentUser.fullName.trim().toLowerCase()
+    );
+    return (
+      matched || {
+        id: currentUser.id,
+        fullName: currentUser.fullName,
+        className: currentUser.title || 'Học viên GDTX',
+      }
+    );
+  }, [currentUser, students]);
 
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<string>(
     assignments[0]?.id || ''
@@ -68,7 +88,9 @@ export const OnlineClassroom: React.FC = () => {
   // Submit test answers
   const handleSubmitTest = () => {
     if (!activeTest) return;
-    const currentStudent = students.find((s) => s.id === selectedStudentForTest) || students[0];
+    const currentStudent = isStudentAccount
+      ? loggedInStudent
+      : students.find((s) => s.id === selectedStudentForTest) || students[0];
 
     // Auto-grade multiple choice questions
     let totalScore = 0;
@@ -161,34 +183,44 @@ export const OnlineClassroom: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
-          <button
-            onClick={() => setIsAddAssignmentOpen(true)}
-            className="px-4 py-2 bg-[#0878C9] hover:bg-[#073B66] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            Tạo bài tập mới
-          </button>
-        </div>
+        {!isStudentAccount && (
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={() => setIsAddAssignmentOpen(true)}
+              className="px-4 py-2 bg-[#0878C9] hover:bg-[#073B66] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              Tạo bài tập mới
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Role Switch Banner */}
-      <div className="p-4 bg-sky-50 rounded-2xl border border-sky-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+      {/* Role Switch Banner (Chỉ cho Giáo viên / Admin thử góc nhìn; Học sinh chỉ thấy thông tin cá nhân) */}
+      <div className="p-4 bg-sky-50 rounded-2xl border border-sky-100 flex flex-wrap items-center justify-between gap-3 text-xs font-sans">
         <div className="flex items-center gap-2">
-          <User className="w-4 h-4 text-[#0878C9]" />
-          <span className="text-slate-700">
-            Bạn đang xem ở vai trò: <strong className="text-[#073B66] font-bold">{userRole === 'student' ? 'Học sinh' : 'Giáo viên (Cô Thu)'}</strong>
-          </span>
+          <User className="w-4 h-4 text-[#0878C9] shrink-0" />
+          {isStudentAccount ? (
+            <span className="text-slate-700">
+              Thí sinh đang đăng nhập: <strong className="text-[#073B66] font-bold">{loggedInStudent.fullName}</strong> · Chế độ Học sinh
+            </span>
+          ) : (
+            <span className="text-slate-700">
+              Bạn đang xem ở vai trò: <strong className="text-[#073B66] font-bold">Giáo viên (Cô Thu)</strong>
+            </span>
+          )}
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-slate-500">Chuyển góc nhìn:</span>
-          <button
-            onClick={() => setUserRole(userRole === 'student' ? 'teacher' : 'student')}
-            className="px-3 py-1 bg-white hover:bg-slate-100 text-[#073B66] border border-slate-200 rounded-lg font-bold transition-colors cursor-pointer"
-          >
-            Đổi sang góc nhìn {userRole === 'student' ? 'Giáo viên' : 'Học sinh'}
-          </button>
-        </div>
+        {currentUser?.role !== 'student' && (
+          <div className="flex items-center gap-2">
+            <span className="text-slate-500">Chuyển góc nhìn:</span>
+            <button
+              onClick={() => setUserRole(userRole === 'student' ? 'teacher' : 'student')}
+              className="px-3 py-1 bg-white hover:bg-slate-100 text-[#073B66] border border-slate-200 rounded-lg font-bold transition-colors cursor-pointer"
+            >
+              Đổi sang góc nhìn {userRole === 'student' ? 'Giáo viên' : 'Học sinh'}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Assignments Grid */}
@@ -248,70 +280,115 @@ export const OnlineClassroom: React.FC = () => {
         ))}
       </div>
 
-      {/* Submissions Management Panel */}
+      {/* Submissions Management Panel (Teacher sees full class; Student sees ONLY own submission) */}
       {activeAssignment && (
-        <div className="bg-white rounded-2xl p-5 shadow-xs border border-slate-200 space-y-4">
+        <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-xs border border-slate-200 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
             <div>
               <h3 className="text-base font-bold text-[#073B66] font-serif">
-                Danh sách nộp bài: {activeAssignment.title}
+                {isStudentAccount
+                  ? `Kết quả bài làm của em: ${activeAssignment.title}`
+                  : `Danh sách nộp bài: ${activeAssignment.title}`}
               </h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Lớp {activeAssignment.className} | Hạn nộp: {activeAssignment.deadline}
+              <p className="text-xs text-slate-500 mt-0.5 font-sans">
+                Lớp {activeAssignment.className} · Hạn nộp: {activeAssignment.deadline}
               </p>
             </div>
           </div>
 
-          <div className="border border-slate-200 rounded-xl overflow-hidden">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-                  <th className="py-2.5 px-3 text-center w-12">STT</th>
-                  <th className="py-2.5 px-3">Họ và tên học sinh</th>
-                  <th className="py-2.5 px-3 text-center">Thời gian nộp</th>
-                  <th className="py-2.5 px-3 text-center">Điểm số</th>
-                  <th className="py-2.5 px-3">Nhận xét của giáo viên</th>
-                  <th className="py-2.5 px-3 text-center w-24">Thao tác</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {activeAssignment.submissions.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="py-8 text-center text-slate-400">
-                      Chưa có học sinh nào nộp bài tập này.
-                    </td>
+          {isStudentAccount ? (
+            (() => {
+              const mySub = activeAssignment.submissions.find(
+                (sub) =>
+                  sub.studentId === loggedInStudent.id ||
+                  sub.studentName.trim().toLowerCase() === loggedInStudent.fullName.trim().toLowerCase()
+              );
+              if (!mySub) {
+                return (
+                  <div className="p-5 bg-slate-50 rounded-xl border border-slate-200 text-center space-y-3 font-sans">
+                    <p className="text-xs sm:text-sm text-slate-600">
+                      Em chưa nộp bài tập <strong>{activeAssignment.title}</strong>.
+                    </p>
+                    <button
+                      onClick={() => handleStartTest(activeAssignment)}
+                      className="min-h-[44px] px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                    >
+                      <PlayCircle className="w-4 h-4" />
+                      Vào làm bài ngay
+                    </button>
+                  </div>
+                );
+              }
+              return (
+                <div className="p-4 sm:p-5 bg-emerald-50/50 rounded-xl border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 font-sans">
+                  <div className="space-y-1">
+                    <div className="text-sm font-bold text-[#073B66]">{mySub.studentName}</div>
+                    <div className="text-xs text-slate-500">Nộp bài lúc: {mySub.submittedAt}</div>
+                    <div className="text-xs text-slate-700 italic">
+                      Nhận xét của cô Thu: {mySub.teacherFeedback || 'Chưa có nhận xét'}
+                    </div>
+                  </div>
+                  <div className="text-left sm:text-right shrink-0">
+                    <div className="text-[11px] font-semibold text-slate-500 uppercase">Điểm của em</div>
+                    <div className="text-2xl font-black text-emerald-700 tabular-nums">
+                      {mySub.score.toFixed(1)} / 10
+                    </div>
+                  </div>
+                </div>
+              );
+            })()
+          ) : (
+            <div className="border border-slate-200 rounded-xl overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse min-w-[600px]">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                    <th className="py-2.5 px-3 text-center w-12">STT</th>
+                    <th className="py-2.5 px-3">Họ và tên học sinh</th>
+                    <th className="py-2.5 px-3 text-center">Thời gian nộp</th>
+                    <th className="py-2.5 px-3 text-center">Điểm số</th>
+                    <th className="py-2.5 px-3">Nhận xét của giáo viên</th>
+                    <th className="py-2.5 px-3 text-center w-24">Thao tác</th>
                   </tr>
-                ) : (
-                  activeAssignment.submissions.map((sub, idx) => (
-                    <tr key={sub.studentId} className="hover:bg-sky-50/40">
-                      <td className="py-2.5 px-3 text-center font-bold text-slate-500">{idx + 1}</td>
-                      <td className="py-2.5 px-3 font-bold text-slate-800">{sub.studentName}</td>
-                      <td className="py-2.5 px-3 text-center text-slate-500">{sub.submittedAt}</td>
-                      <td className="py-2.5 px-3 text-center font-extrabold text-sm text-[#0878C9]">
-                        {sub.score.toFixed(1)} / 10
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-600 italic">
-                        {sub.teacherFeedback || 'Chưa có nhận xét'}
-                      </td>
-                      <td className="py-2.5 px-3 text-center">
-                        <button
-                          onClick={() => {
-                            setSubmissionToGrade(sub);
-                            setGradeInput(sub.score);
-                            setFeedbackInput(sub.teacherFeedback || '');
-                            setIsGradeModalOpen(true);
-                          }}
-                          className="px-2.5 py-1 bg-[#0878C9] hover:bg-[#073B66] text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
-                        >
-                          Chấm điểm
-                        </button>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {activeAssignment.submissions.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-8 text-center text-slate-400">
+                        Chưa có học sinh nào nộp bài tập này.
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                  ) : (
+                    activeAssignment.submissions.map((sub, idx) => (
+                      <tr key={sub.studentId} className="hover:bg-sky-50/40">
+                        <td className="py-2.5 px-3 text-center font-bold text-slate-500">{idx + 1}</td>
+                        <td className="py-2.5 px-3 font-bold text-slate-800">{sub.studentName}</td>
+                        <td className="py-2.5 px-3 text-center text-slate-500">{sub.submittedAt}</td>
+                        <td className="py-2.5 px-3 text-center font-extrabold text-sm text-[#0878C9]">
+                          {sub.score.toFixed(1)} / 10
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600 italic">
+                          {sub.teacherFeedback || 'Chưa có nhận xét'}
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          <button
+                            onClick={() => {
+                              setSubmissionToGrade(sub);
+                              setGradeInput(sub.score);
+                              setFeedbackInput(sub.teacherFeedback || '');
+                              setIsGradeModalOpen(true);
+                            }}
+                            className="px-2.5 py-1 bg-[#0878C9] hover:bg-[#073B66] text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                          >
+                            Chấm điểm
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
@@ -326,23 +403,31 @@ export const OnlineClassroom: React.FC = () => {
           <div className="space-y-4 text-xs">
             {!testResult ? (
               <>
-                <div className="p-3 bg-sky-50 rounded-xl border border-sky-100 flex items-center justify-between">
+                <div className="p-3 bg-sky-50 rounded-xl border border-sky-100 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-700">Chọn tài khoản học sinh:</span>
-                    <select
-                      value={selectedStudentForTest}
-                      onChange={(e) => setSelectedStudentForTest(e.target.value)}
-                      className="px-2 py-1 bg-white border border-slate-200 rounded-lg font-bold text-[#073B66]"
-                    >
-                      {students.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.fullName} ({s.className})
-                        </option>
-                      ))}
-                    </select>
+                    {isStudentAccount ? (
+                      <span className="font-bold text-[#073B66]">
+                        Thí sinh: {loggedInStudent.fullName}
+                      </span>
+                    ) : (
+                      <>
+                        <span className="font-bold text-slate-700">Chọn tài khoản học sinh:</span>
+                        <select
+                          value={selectedStudentForTest}
+                          onChange={(e) => setSelectedStudentForTest(e.target.value)}
+                          className="px-2 py-1 bg-white border border-slate-200 rounded-lg font-bold text-[#073B66]"
+                        >
+                          {students.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.fullName} ({s.className})
+                            </option>
+                          ))}
+                        </select>
+                      </>
+                    )}
                   </div>
 
-                  <div className="flex items-center gap-1 font-bold text-amber-600">
+                  <div className="flex items-center gap-1 font-bold text-amber-600 tabular-nums">
                     <Clock className="w-4 h-4" />
                     {activeTest.durationMinutes}:00 phút
                   </div>

@@ -66,6 +66,7 @@ interface ExamProctoringPreStartGateProps {
   questionCount: number;
   theme: 'sepia' | 'white' | 'dark';
   isTeacherPreview?: boolean;
+  isMobileDevice?: boolean;
   onStartExam: () => void;
   onCancel: () => void;
 }
@@ -79,6 +80,7 @@ export const ExamProctoringPreStartGate: React.FC<ExamProctoringPreStartGateProp
   questionCount,
   theme,
   isTeacherPreview,
+  isMobileDevice = false,
   onStartExam,
   onCancel,
 }) => {
@@ -151,10 +153,22 @@ export const ExamProctoringPreStartGate: React.FC<ExamProctoringPreStartGateProp
           <div className={`p-4 rounded-2xl border space-y-1.5 ${ruleBoxClass}`}>
             <div className="font-bold text-[#073B66] dark:text-sky-300 flex items-center gap-2">
               <Maximize className="w-4 h-4 text-[#0878C9] shrink-0" />
-              <span>1. Bắt buộc Toàn màn hình</span>
+              <span>
+                {isMobileDevice
+                  ? '1. Giữ màn hình phòng thi tập trung'
+                  : '1. Bắt buộc Toàn màn hình'}
+              </span>
             </div>
             <p className="leading-relaxed opacity-90">
-              Hệ thống tự động mở chế độ Toàn màn hình. Nếu nhấn <kbd className="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 font-mono text-[11px]">ESC</kbd> hoặc thoát toàn màn hình, đề thi sẽ tạm khóa cho đến khi quay lại.
+              {isMobileDevice ? (
+                <>
+                  Trên điện thoại, hệ thống khóa màn hình thi tập trung. Không thoát ra màn hình chính hoặc mở Zalo/Messenger khi chưa nộp bài.
+                </>
+              ) : (
+                <>
+                  Hệ thống tự động mở chế độ Toàn màn hình. Nếu nhấn <kbd className="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 font-mono text-[11px]">ESC</kbd> hoặc thoát toàn màn hình, đề thi sẽ tạm khóa cho đến khi quay lại.
+                </>
+              )}
             </p>
           </div>
 
@@ -190,11 +204,11 @@ export const ExamProctoringPreStartGate: React.FC<ExamProctoringPreStartGateProp
         </div>
 
         {/* Actions */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+        <div className="flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-3 pt-2">
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap shrink-0"
+            className="w-full sm:w-auto min-h-[44px] px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer flex items-center justify-center gap-2 whitespace-nowrap shrink-0"
           >
             <ArrowLeft className="w-4 h-4" />
             Quay lại
@@ -203,10 +217,14 @@ export const ExamProctoringPreStartGate: React.FC<ExamProctoringPreStartGateProp
           <button
             type="button"
             onClick={onStartExam}
-            className="px-6 py-3 rounded-xl bg-[#073B66] hover:bg-[#0878C9] text-white text-xs sm:text-sm font-bold shadow-md transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shrink-0 active:scale-[0.99]"
+            className="w-full sm:w-auto min-h-[44px] px-6 py-3 rounded-xl bg-[#073B66] hover:bg-[#0878C9] text-white text-xs sm:text-sm font-bold shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 sm:whitespace-nowrap shrink-0 active:scale-[0.99]"
           >
-            <Maximize className="w-4 h-4 text-amber-300" />
-            Tôi hiểu quy chế & Bắt đầu làm bài (Toàn màn hình)
+            <Maximize className="w-4 h-4 text-amber-300 shrink-0" />
+            <span>
+              {isMobileDevice
+                ? 'Tôi hiểu quy chế & Bắt đầu làm bài'
+                : 'Tôi hiểu quy chế & Bắt đầu làm bài (Toàn màn hình)'}
+            </span>
           </button>
         </div>
       </div>
@@ -312,12 +330,12 @@ export const ExamProctoringWarningOverlay: React.FC<ExamProctoringWarningOverlay
           )}
         </p>
 
-        <div className="flex flex-wrap items-center justify-end gap-2.5 pt-1">
+        <div className="flex flex-col-reverse sm:flex-row sm:items-center justify-end gap-2.5 pt-1">
           {onRequestSubmitEarly && (
             <button
               type="button"
               onClick={onRequestSubmitEarly}
-              className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold cursor-pointer transition-colors whitespace-nowrap shrink-0"
+              className="w-full sm:w-auto min-h-[44px] px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold cursor-pointer transition-colors whitespace-nowrap shrink-0"
             >
               Nộp bài ngay
             </button>
@@ -325,13 +343,13 @@ export const ExamProctoringWarningOverlay: React.FC<ExamProctoringWarningOverlay
           <button
             type="button"
             onClick={onResumeExam}
-            className={`px-5 py-2.5 rounded-xl text-white text-xs font-bold shadow-md cursor-pointer transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${
+            className={`w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl text-white text-xs font-bold shadow-md cursor-pointer transition-all flex items-center justify-center gap-2 whitespace-nowrap shrink-0 ${
               isCritical
                 ? 'bg-rose-600 hover:bg-rose-700'
                 : 'bg-[#073B66] hover:bg-[#0878C9]'
             }`}
           >
-            <Maximize className="w-4 h-4" />
+            <Maximize className="w-4 h-4 shrink-0" />
             <span>
               {fullscreenSupported
                 ? 'Quay lại Toàn màn hình & Tiếp tục làm bài'

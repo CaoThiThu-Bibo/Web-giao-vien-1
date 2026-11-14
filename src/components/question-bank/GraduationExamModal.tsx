@@ -643,31 +643,35 @@ Trọng tâm đổi mới là phát triển nền kinh tế hàng hóa nhiều t
               Thư viện đề ({examLibrary.length})
             </button>
 
-            {/* Tab 2: AI Generator */}
-            <button
-              onClick={() => setActiveTab('ai-studio')}
-              className={`px-3 py-2 rounded-xl font-extrabold flex items-center gap-1.5 cursor-pointer transition-all ${
-                activeTab === 'ai-studio'
-                  ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-xs'
-                  : 'bg-purple-50 text-purple-800 border border-purple-200 hover:bg-purple-100'
-              }`}
-            >
-              <Sparkles className="w-4 h-4 text-amber-300" />
-              AI Soạn đề từ tư liệu
-            </button>
+            {userRole !== 'student' && (
+              <>
+                {/* Tab 2: AI Generator */}
+                <button
+                  onClick={() => setActiveTab('ai-studio')}
+                  className={`px-3 py-2 rounded-xl font-extrabold flex items-center gap-1.5 cursor-pointer transition-all ${
+                    activeTab === 'ai-studio'
+                      ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-xs'
+                      : 'bg-purple-50 text-purple-800 border border-purple-200 hover:bg-purple-100'
+                  }`}
+                >
+                  <Sparkles className="w-4 h-4 text-amber-300" />
+                  AI Soạn đề từ tư liệu
+                </button>
 
-            {/* Tab 3: Upload Word */}
-            <button
-              onClick={() => setActiveTab('upload')}
-              className={`px-3 py-2 rounded-xl font-bold flex items-center gap-1.5 cursor-pointer transition-all ${
-                activeTab === 'upload'
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
-            >
-              <Upload className="w-4 h-4" />
-              Tải lên đề từ Word
-            </button>
+                {/* Tab 3: Upload Word */}
+                <button
+                  onClick={() => setActiveTab('upload')}
+                  className={`px-3 py-2 rounded-xl font-bold flex items-center gap-1.5 cursor-pointer transition-all ${
+                    activeTab === 'upload'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  <Upload className="w-4 h-4" />
+                  Tải lên đề từ Word
+                </button>
+              </>
+            )}
 
             {/* Tab 4: Grading Room */}
             <button
@@ -695,18 +699,20 @@ Trọng tâm đổi mới là phát triển nền kinh tế hàng hóa nhiều t
               Xem & In đề thi
             </button>
 
-            {/* Tab 6: Key */}
-            <button
-              onClick={() => setActiveTab('key')}
-              className={`px-3 py-2 rounded-xl font-bold flex items-center gap-1.5 cursor-pointer transition-all ${
-                activeTab === 'key'
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
-            >
-              <CheckSquare className="w-4 h-4" />
-              Đáp án & Barem
-            </button>
+            {/* Tab 6: Key (Teacher only) */}
+            {userRole !== 'student' && (
+              <button
+                onClick={() => setActiveTab('key')}
+                className={`px-3 py-2 rounded-xl font-bold flex items-center gap-1.5 cursor-pointer transition-all ${
+                  activeTab === 'key'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                <CheckSquare className="w-4 h-4" />
+                Đáp án & Barem
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -727,7 +733,7 @@ Trọng tâm đổi mới là phát triển nền kinh tế hàng hóa nhiều t
               In đề thi
             </button>
 
-            {onImportToBank && (
+            {onImportToBank && userRole !== 'student' && (
               <button
                 onClick={() => {
                   const allQ = [...part1Questions, ...part2Questions];

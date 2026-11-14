@@ -21,12 +21,15 @@ import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { Menu, X } from 'lucide-react';
 
 const MainLayout: React.FC = () => {
-  const { activeTab, setUserRole, systemConfig, updateSystemConfig } = useApp();
+  const { activeTab, setActiveTab, setUserRole, systemConfig, updateSystemConfig } = useApp();
   const { currentUser, isAuthenticated } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isGuestMode, setIsGuestMode] = useState(false);
 
-  // Sync role and teacher name from logged in user
+  const effectiveRole = currentUser?.role || systemConfig.activeRole;
+  const isStudentAccount = effectiveRole === 'student';
+
+  // Sync role and teacher name from logged in user, and auto-route student accounts into student portal
   useEffect(() => {
     if (currentUser) {
       if (currentUser.role && currentUser.role !== systemConfig.activeRole) {
@@ -38,12 +41,46 @@ const MainLayout: React.FC = () => {
     }
   }, [currentUser]);
 
+  // Enforce strict role separation: if student is on a teacher/admin tab, redirect to student exam portal
+  useEffect(() => {
+    if (isStudentAccount) {
+      const studentAllowedTabs = ['dashboard', 'question-bank', 'online-room', 'materials', 'student-support'];
+      if (!studentAllowedTabs.includes(activeTab)) {
+        setActiveTab('question-bank');
+      }
+    }
+  }, [isStudentAccount, activeTab, setActiveTab]);
+
+  // When a user logs in as student directly, land them on the Exam Hub ('question-bank') automatically
+  useEffect(() => {
+    if (currentUser?.role === 'student') {
+      setActiveTab('question-bank');
+    }
+  }, [currentUser?.id, currentUser?.role]);
+
   // If user is not logged in and hasn't chosen guest preview mode, show the full AuthLanding
   if (!isAuthenticated && !isGuestMode) {
     return <AuthLanding onBypassAsGuest={() => setIsGuestMode(true)} />;
   }
 
   const renderActiveModule = () => {
+    if (isStudentAccount) {
+      switch (activeTab) {
+        case 'dashboard':
+          return <Dashboard />;
+        case 'question-bank':
+          return <QuestionBank />;
+        case 'materials':
+          return <DigitalLibrary />;
+        case 'online-room':
+          return <OnlineClassroom />;
+        case 'student-support':
+          return <StudentSupport />;
+        default:
+          return <QuestionBank />;
+      }
+    }
+
     switch (activeTab) {
       case 'dashboard':
         return <Dashboard />;
@@ -93,14 +130,14 @@ const MainLayout: React.FC = () => {
       )}
 
       {/* Mobile Menu Bar Toggle */}
-      <div className="lg:hidden flex items-center justify-between px-4 py-2.5 bg-[#073B66] text-white border-b border-[#085a96]/40">
-        <span className="text-xs font-bold font-serif tracking-wider text-cyan-200">
-          MENU ĐIỀU HƯỚNG 12 PHÂN HỆ
+      <div className="lg:hidden flex items-center justify-between px-4 py-2 bg-[#073B66] text-white border-b border-[#085a96]/40">
+        <span className="text-xs font-bold font-sans tracking-wider text-cyan-200 uppercase">
+          {isStudentAccount ? 'Cổng Học Sinh · Phòng Thi Lịch Sử' : 'Menu Điều Hướng Hệ Thống'}
         </span>
         <button
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="p-1 rounded-md text-cyan-200 hover:text-white transition-colors cursor-pointer"
-          aria-label="Toggle menu"
+          className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-cyan-200 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+          aria-label="Mở menu điều hướng"
         >
           {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
@@ -117,17 +154,17 @@ const MainLayout: React.FC = () => {
         {isMobileMenuOpen && (
           <div className="lg:hidden fixed inset-0 z-40 flex">
             <div
-              className="fixed inset-0 bg-slate-900/60"
+              className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs"
               onClick={() => setIsMobileMenuOpen(false)}
             />
             <div className="relative z-50 w-72 max-w-[85vw] h-full shadow-2xl">
-              <Sidebar />
+              <Sidebar onNavigate={() => setIsMobileMenuOpen(false)} />
             </div>
           </div>
         )}
 
         {/* Dynamic Main Workspace Area */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-7 overflow-y-auto max-w-[1700px] mx-auto w-full">
+        <main className="flex-1 p-3 sm:p-6 lg:p-7 overflow-y-auto max-w-[1700px] mx-auto w-full">
           {renderActiveModule()}
         </main>
       </div>

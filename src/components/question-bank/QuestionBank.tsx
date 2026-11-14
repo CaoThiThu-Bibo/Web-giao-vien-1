@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 import { Question, QuestionType, TrueFalseStatement, FillBlankItem, MatchingPair, RubricCriteria } from '../../types';
 import { Modal } from '../common/Modal';
 import { WordImportModal } from './WordImportModal';
@@ -44,7 +45,9 @@ import { ExamRoomHubModal, ExamRoomKey } from './ExamRoomHubModal';
 import { HistoryGamesHubModal } from '../history-games/HistoryGamesHubModal';
 
 export const QuestionBank: React.FC = () => {
-  const { questions, addQuestion, updateQuestion, deleteQuestion } = useApp();
+  const { questions, addQuestion, updateQuestion, deleteQuestion, userRole } = useApp();
+  const { currentUser } = useAuth();
+  const isStudentAccount = currentUser?.role === 'student' || userRole === 'student';
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGrade, setSelectedGrade] = useState<string>('all');
@@ -487,231 +490,379 @@ export const QuestionBank: React.FC = () => {
     setBlankItems((prev) => [...prev, { id: nextIndex, blankLabel: `[${nextIndex}]`, correctWord: '' }]);
   };
 
+  const openExamRoomForRole = (mode: ExamRoomKey) => {
+    setSelectedRoomMode(mode);
+    setExamModalInitialTeacherMode(!isStudentAccount);
+    setExamModalProctorPreview(false);
+    setIsStudentExamModalOpen(true);
+  };
+
   return (
     <div className="space-y-5 animate-in fade-in duration-150">
-      {/* Header Banner */}
-      <div className="bg-white rounded-2xl p-5 shadow-xs border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 no-print">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full bg-sky-100 text-[#073B66] text-[11px] font-bold">
-              GDNN - GDTX Tiên Yên
-            </span>
-            <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold">
-              Định dạng 2025 (5 dạng câu hỏi)
-            </span>
+      {isStudentAccount ? (
+        /* DEDICATED STUDENT EXAM PORTAL (MOBILE-FIRST & ZERO TEACHER CONTROLS) */
+        <div className="space-y-5 font-sans">
+          <div className="bg-gradient-to-r from-[#073B66] via-[#085a96] to-[#0878C9] text-white rounded-3xl p-5 sm:p-7 shadow-lg space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-1">
+                <div className="text-xs text-cyan-200 font-medium">
+                  Thí sinh: <strong className="text-white">{currentUser?.fullName || 'Học viên GDTX'}</strong> · Trung tâm GDNN - GDTX Tiên Yên
+                </div>
+                <h2 className="text-xl sm:text-2xl font-bold font-serif tracking-tight">
+                  Cổng 5 Phòng Thi Trực Tuyến Môn Lịch Sử
+                </h2>
+                <p className="text-xs sm:text-sm text-sky-100 max-w-2xl">
+                  Chọn đúng phòng thi theo dạng bài, bấm Khối / Lớp / Bài học để bắt đầu ôn luyện và thi trực tuyến.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => openExamRoomForRole('all')}
+                className="w-full sm:w-auto min-h-[48px] px-5 py-3 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-sm rounded-2xl shadow-md flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98] shrink-0"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>Thi Tổng Hợp 5 Dạng (45p)</span>
+              </button>
+            </div>
           </div>
-          <h2 className="text-xl sm:text-2xl font-bold text-[#073B66] font-serif flex items-center gap-2.5 mt-1.5">
-            <FileQuestion className="w-6 h-6 text-[#0878C9]" />
-            Ngân hàng câu hỏi & Đề kiểm tra Lịch sử
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Hỗ trợ 5 dạng: Trắc nghiệm 1 đáp án, Đúng/Sai chuẩn 2025, Điền từ, Nối từ và Tự luận (kèm biểu điểm rubric)
-          </p>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
-          {/* Download Word Template */}
-          <button
-            onClick={downloadWordTemplate}
-            className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-[#073B66] rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-2xs border border-slate-200 cursor-pointer transition-colors"
-            title="Tải file Word mẫu định dạng chuẩn Bộ GD&ĐT"
-          >
-            <Download className="w-4 h-4 text-[#0878C9]" />
-            Tải file Word mẫu (.doc)
-          </button>
-
-          {/* Upload / Batch Import Word */}
-          <button
-            onClick={() => setIsWordImportModalOpen(true)}
-            className="px-3.5 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
-            title="Tải lên file Word (.docx) hoặc dán hàng loạt câu hỏi"
-          >
-            <Upload className="w-4 h-4" />
-            Tải lên từ Word / Dán nhanh
-          </button>
-
-          {/* Chỗ luyện đề thi ôn thi tốt nghiệp THPT 12 (AI Soạn theo tư liệu & Chuẩn Bộ GD&ĐT) */}
-          <button
-            onClick={() => setIsGraduationExamModalOpen(true)}
-            className="px-4 py-2 bg-gradient-to-r from-amber-500 via-orange-600 to-red-600 hover:from-amber-600 hover:to-red-700 text-white rounded-xl text-xs font-black flex items-center gap-2 shadow-md hover:shadow-lg transition-all cursor-pointer border border-amber-300 ring-2 ring-amber-400/30"
-            title="Chỗ luyện đề thi ôn thi tốt nghiệp: Tải lên đề thi, AI tự soạn đề theo dữ liệu cô cung cấp, và phòng chấm tự động thang 10 chuẩn Bộ GD&ĐT"
-          >
-            <GraduationCap className="w-4 h-4 text-amber-100" />
-            <span>Luyện Đề Ôn Thi Tốt Nghiệp THPT 12</span>
-            <span className="bg-white/25 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
-              AI & Chuẩn Bộ
-            </span>
-          </button>
-
-          {/* Phòng Thi Trực Tuyến Học Sinh (5 phòng chuyên biệt) */}
-          <button
-            onClick={() => setIsExamRoomHubOpen(true)}
-            className="px-4 py-2 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 hover:from-emerald-700 hover:to-cyan-800 text-white rounded-xl text-xs font-black flex items-center gap-2 shadow-md hover:shadow-lg transition-all cursor-pointer border border-emerald-300 ring-2 ring-emerald-400/30"
-            title="Mở Không gian 5 Phòng thi trực tuyến chuyên biệt: Trắc nghiệm đơn, Đúng/Sai tư liệu, Điền từ, Ghép đôi, Tự luận"
-          >
-            <Clock className="w-4 h-4 text-emerald-100" />
-            <span>Phòng Thi Trực Tuyến Học Sinh</span>
-            <span className="bg-white/25 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
-              5 Phòng Thi Riêng Biệt
-            </span>
-          </button>
-
-          {/* Trò Chơi Lịch Sử Tương Tác (3 Game: Vòng Quay • Lật Thẻ • Dòng Thời Gian) */}
-          <button
-            onClick={() => setIsHistoryGamesModalOpen(true)}
-            className="px-4 py-2 bg-gradient-to-r from-purple-600 via-indigo-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-xl text-xs font-black flex items-center gap-2 shadow-md hover:shadow-lg transition-all cursor-pointer border border-purple-300 ring-2 ring-purple-400/30"
-            title="Mở Không gian 3 Trò chơi Lịch sử Tương tác: Vòng quay may mắn, Lật thẻ ghi nhớ, Dòng thời gian (Hỗ trợ chiếu TV lớp học)"
-          >
-            <Sparkles className="w-4 h-4 text-amber-200" />
-            <span>Trò Chơi Lịch Sử Tương Tác</span>
-            <span className="bg-white/25 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
-              3 Game • Chiếu Lớp
-            </span>
-          </button>
-
-          {selectedQuestionIds.length > 0 && (
+          {/* 5 Specialized Exam Room Cards - Mobile-first responsive grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
             <button
-              onClick={() => setIsBuildExamModalOpen(true)}
-              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+              type="button"
+              onClick={() => openExamRoomForRole('Trắc nghiệm đơn')}
+              className="bg-white rounded-2xl p-4 sm:p-5 border border-blue-200 hover:border-blue-500 hover:shadow-md transition-all text-left flex flex-col justify-between gap-3 cursor-pointer min-h-[144px]"
             >
-              <Layers className="w-4 h-4" />
-              Tạo đề thi ({selectedQuestionIds.length} câu đã chọn)
+              <div className="flex items-start justify-between gap-2">
+                <div className="w-11 h-11 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                  <Layers className="w-6 h-6" />
+                </div>
+                <span className="text-xs font-bold text-blue-800 tabular-nums">{typeCounts.single} câu · 15 phút</span>
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-[#073B66] font-serif">Phòng 1: Trắc Nghiệm Đơn</h3>
+                <p className="text-xs text-slate-500 mt-1">Chọn 1 đáp án đúng A - B - C - D · Rèn phản xạ tốc độ</p>
+              </div>
+              <div className="text-xs font-bold text-[#0878C9] flex items-center gap-1 pt-1">
+                <span>Vào phòng thi ngay</span>
+                <ChevronRight className="w-4 h-4" />
+              </div>
             </button>
+
+            <button
+              type="button"
+              onClick={() => openExamRoomForRole('Trắc nghiệm đúng sai')}
+              className="bg-white rounded-2xl p-4 sm:p-5 border border-amber-200 hover:border-amber-500 hover:shadow-md transition-all text-left flex flex-col justify-between gap-3 cursor-pointer min-h-[144px]"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="w-11 h-11 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                  <FileText className="w-6 h-6" />
+                </div>
+                <span className="text-xs font-bold text-amber-800 tabular-nums">{typeCounts.tf} câu · 20 phút</span>
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-[#073B66] font-serif">Phòng 2: Đúng / Sai Tư Liệu</h3>
+                <p className="text-xs text-slate-500 mt-1">Phân tích ngữ liệu lịch sử chuẩn Bộ GD&amp;ĐT 2025</p>
+              </div>
+              <div className="text-xs font-bold text-amber-700 flex items-center gap-1 pt-1">
+                <span>Vào phòng thi ngay</span>
+                <ChevronRight className="w-4 h-4" />
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => openExamRoomForRole('Điền từ')}
+              className="bg-white rounded-2xl p-4 sm:p-5 border border-emerald-200 hover:border-emerald-500 hover:shadow-md transition-all text-left flex flex-col justify-between gap-3 cursor-pointer min-h-[144px]"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="w-11 h-11 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                  <CheckSquare className="w-6 h-6" />
+                </div>
+                <span className="text-xs font-bold text-emerald-800 tabular-nums">{typeCounts.blank} câu · 15 phút</span>
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-[#073B66] font-serif">Phòng 3: Điền Từ Sự Kiện</h3>
+                <p className="text-xs text-slate-500 mt-1">Khắc sâu mốc niên đại, thuật ngữ và địa danh lịch sử</p>
+              </div>
+              <div className="text-xs font-bold text-emerald-700 flex items-center gap-1 pt-1">
+                <span>Vào phòng thi ngay</span>
+                <ChevronRight className="w-4 h-4" />
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => openExamRoomForRole('Nối từ')}
+              className="bg-white rounded-2xl p-4 sm:p-5 border border-purple-200 hover:border-purple-500 hover:shadow-md transition-all text-left flex flex-col justify-between gap-3 cursor-pointer min-h-[144px]"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="w-11 h-11 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+                  <ArrowRightLeft className="w-6 h-6" />
+                </div>
+                <span className="text-xs font-bold text-purple-800 tabular-nums">{typeCounts.match} câu · 15 phút</span>
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-[#073B66] font-serif">Phòng 4: Ghép Đôi Cột A – B</h3>
+                <p className="text-xs text-slate-500 mt-1">Nối nhân vật, sự kiện với ý nghĩa và kết quả tương ứng</p>
+              </div>
+              <div className="text-xs font-bold text-purple-700 flex items-center gap-1 pt-1">
+                <span>Vào phòng thi ngay</span>
+                <ChevronRight className="w-4 h-4" />
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => openExamRoomForRole('Tự luận')}
+              className="bg-white rounded-2xl p-4 sm:p-5 border border-rose-200 hover:border-rose-500 hover:shadow-md transition-all text-left flex flex-col justify-between gap-3 cursor-pointer min-h-[144px]"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="w-11 h-11 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+                  <Award className="w-6 h-6" />
+                </div>
+                <span className="text-xs font-bold text-rose-800 tabular-nums">{typeCounts.essay} câu · 35 phút</span>
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-[#073B66] font-serif">Phòng 5: Tự Luận Chuyên Sâu</h3>
+                <p className="text-xs text-slate-500 mt-1">Viết bài phân tích lịch sử, tự động lưu nháp &amp; xem Rubric</p>
+              </div>
+              <div className="text-xs font-bold text-rose-700 flex items-center gap-1 pt-1">
+                <span>Vào phòng thi ngay</span>
+                <ChevronRight className="w-4 h-4" />
+              </div>
+            </button>
+
+            <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl p-4 sm:p-5 border border-amber-200 flex flex-col justify-between gap-3 min-h-[144px]">
+              <div className="space-y-1">
+                <div className="text-xs font-bold text-amber-800">Ôn Tập Bổ Trợ</div>
+                <h3 className="text-base font-bold text-[#073B66] font-serif">Đề Tốt Nghiệp &amp; Trò Chơi Sử</h3>
+                <p className="text-xs text-slate-600">Luyện đề thi thử THPT Quốc gia và ôn bài qua trò chơi</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsGraduationExamModalOpen(true)}
+                  className="flex-1 min-h-[44px] px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors"
+                >
+                  Đề Tốt Nghiệp 12
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsHistoryGamesModalOpen(true)}
+                  className="flex-1 min-h-[44px] px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors"
+                >
+                  Trò Chơi Lịch Sử
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Header Banner (Teacher / Admin) */}
+          <div className="bg-white rounded-2xl p-5 shadow-xs border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 no-print">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-0.5 rounded-full bg-sky-100 text-[#073B66] text-[11px] font-bold">
+                  GDNN - GDTX Tiên Yên
+                </span>
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold">
+                  Định dạng 2025 (5 dạng câu hỏi)
+                </span>
+              </div>
+              <h2 className="text-xl sm:text-2xl font-bold text-[#073B66] font-serif flex items-center gap-2.5 mt-1.5">
+                <FileQuestion className="w-6 h-6 text-[#0878C9]" />
+                Ngân hàng câu hỏi & Đề kiểm tra Lịch sử
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                Hỗ trợ 5 dạng: Trắc nghiệm 1 đáp án, Đúng/Sai chuẩn 2025, Điền từ, Nối từ và Tự luận (kèm biểu điểm rubric)
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* Download Word Template */}
+              <button
+                onClick={downloadWordTemplate}
+                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-[#073B66] rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-2xs border border-slate-200 cursor-pointer transition-colors"
+                title="Tải file Word mẫu định dạng chuẩn Bộ GD&ĐT"
+              >
+                <Download className="w-4 h-4 text-[#0878C9]" />
+                Tải file Word mẫu (.doc)
+              </button>
+
+              {/* Upload / Batch Import Word */}
+              <button
+                onClick={() => setIsWordImportModalOpen(true)}
+                className="px-3.5 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                title="Tải lên file Word (.docx) hoặc dán hàng loạt câu hỏi"
+              >
+                <Upload className="w-4 h-4" />
+                Tải lên từ Word / Dán nhanh
+              </button>
+
+              {/* Chỗ luyện đề thi ôn thi tốt nghiệp THPT 12 (AI Soạn theo tư liệu & Chuẩn Bộ GD&ĐT) */}
+              <button
+                onClick={() => setIsGraduationExamModalOpen(true)}
+                className="px-4 py-2 bg-gradient-to-r from-amber-500 via-orange-600 to-red-600 hover:from-amber-600 hover:to-red-700 text-white rounded-xl text-xs font-black flex items-center gap-2 shadow-md hover:shadow-lg transition-all cursor-pointer border border-amber-300 ring-2 ring-amber-400/30"
+                title="Chỗ luyện đề thi ôn thi tốt nghiệp: Tải lên đề thi, AI tự soạn đề theo dữ liệu cô cung cấp, và phòng chấm tự động thang 10 chuẩn Bộ GD&ĐT"
+              >
+                <GraduationCap className="w-4 h-4 text-amber-100" />
+                <span>Luyện Đề Ôn Thi Tốt Nghiệp THPT 12</span>
+                <span className="bg-white/25 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+                  AI & Chuẩn Bộ
+                </span>
+              </button>
+
+              {/* Phòng Thi Trực Tuyến Học Sinh (5 phòng chuyên biệt) */}
+              <button
+                onClick={() => setIsExamRoomHubOpen(true)}
+                className="px-4 py-2 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 hover:from-emerald-700 hover:to-cyan-800 text-white rounded-xl text-xs font-black flex items-center gap-2 shadow-md hover:shadow-lg transition-all cursor-pointer border border-emerald-300 ring-2 ring-emerald-400/30"
+                title="Mở Không gian 5 Phòng thi trực tuyến chuyên biệt: Trắc nghiệm đơn, Đúng/Sai tư liệu, Điền từ, Ghép đôi, Tự luận"
+              >
+                <Clock className="w-4 h-4 text-emerald-100" />
+                <span>Phòng Thi Trực Tuyến Học Sinh</span>
+                <span className="bg-white/25 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+                  5 Phòng Thi Riêng Biệt
+                </span>
+              </button>
+
+              {/* Trò Chơi Lịch Sử Tương Tác (3 Game: Vòng Quay • Lật Thẻ • Dòng Thời Gian) */}
+              <button
+                onClick={() => setIsHistoryGamesModalOpen(true)}
+                className="px-4 py-2 bg-gradient-to-r from-purple-600 via-indigo-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-xl text-xs font-black flex items-center gap-2 shadow-md hover:shadow-lg transition-all cursor-pointer border border-purple-300 ring-2 ring-purple-400/30"
+                title="Mở Không gian 3 Trò chơi Lịch sử Tương tác: Vòng quay may mắn, Lật thẻ ghi nhớ, Dòng thời gian (Hỗ trợ chiếu TV lớp học)"
+              >
+                <Sparkles className="w-4 h-4 text-amber-200" />
+                <span>Trò Chơi Lịch Sử Tương Tác</span>
+                <span className="bg-white/25 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+                  3 Game • Chiếu Lớp
+                </span>
+              </button>
+
+              {selectedQuestionIds.length > 0 && (
+                <button
+                  onClick={() => setIsBuildExamModalOpen(true)}
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                >
+                  <Layers className="w-4 h-4" />
+                  Tạo đề thi ({selectedQuestionIds.length} câu đã chọn)
+                </button>
+              )}
+
+              <button
+                onClick={handleOpenAdd}
+                className="px-3.5 py-2 bg-[#0878C9] hover:bg-[#073B66] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                Thêm câu hỏi mới
+              </button>
+            </div>
+          </div>
+
+          {/* QUICK 5-ROOM LAUNCH BAR */}
+          <div className="bg-gradient-to-r from-sky-50 via-indigo-50/50 to-teal-50 border border-sky-200/80 rounded-2xl p-3 flex flex-wrap items-center justify-between gap-2.5 shadow-2xs font-sans">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-lg bg-[#073B66] text-white flex items-center justify-center font-bold text-xs shadow-2xs">
+                5
+              </div>
+              <span className="text-xs font-black text-[#073B66] uppercase tracking-wide">
+                5 Phòng Thi Chuyên Biệt Môn Lịch Sử:
+              </span>
+              <span className="text-[11px] text-slate-500 hidden lg:inline">
+                (Bấm vào từng phòng để vào thi ngay theo dạng mong muốn)
+              </span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              {/* Phòng 1 */}
+              <button
+                onClick={() => openExamRoomForRole('Trắc nghiệm đơn')}
+                className="px-3 py-1.5 rounded-xl bg-white hover:bg-blue-50 border border-blue-200 hover:border-blue-400 text-blue-900 text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer transition-all active:scale-95"
+                title="Vào Phòng 1: Trắc nghiệm đơn (Nhiều lựa chọn A-B-C-D)"
+              >
+                <Layers className="w-3.5 h-3.5 text-blue-600" />
+                <span>Phòng 1: TN Đơn</span>
+                <span className="bg-blue-100 text-blue-800 text-[10px] px-1.5 py-0.2 rounded-full font-bold">15p</span>
+              </button>
+
+              {/* Phòng 2 */}
+              <button
+                onClick={() => openExamRoomForRole('Trắc nghiệm đúng sai')}
+                className="px-3 py-1.5 rounded-xl bg-white hover:bg-amber-50 border border-amber-200 hover:border-amber-400 text-amber-950 text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer transition-all active:scale-95"
+                title="Vào Phòng 2: Đúng / Sai có ngữ liệu tư liệu (Chuẩn 2025)"
+              >
+                <FileText className="w-3.5 h-3.5 text-amber-600" />
+                <span>Phòng 2: Đúng / Sai</span>
+                <span className="bg-amber-100 text-amber-900 text-[10px] px-1.5 py-0.2 rounded-full font-bold">20p</span>
+              </button>
+
+              {/* Phòng 3 */}
+              <button
+                onClick={() => openExamRoomForRole('Điền từ')}
+                className="px-3 py-1.5 rounded-xl bg-white hover:bg-emerald-50 border border-emerald-200 hover:border-emerald-400 text-emerald-950 text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer transition-all active:scale-95"
+                title="Vào Phòng 3: Điền từ vào chỗ trống (Ngân hàng từ khóa)"
+              >
+                <CheckSquare className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Phòng 3: Điền Từ</span>
+                <span className="bg-emerald-100 text-emerald-900 text-[10px] px-1.5 py-0.2 rounded-full font-bold">15p</span>
+              </button>
+
+              {/* Phòng 4 */}
+              <button
+                onClick={() => openExamRoomForRole('Nối từ')}
+                className="px-3 py-1.5 rounded-xl bg-white hover:bg-purple-50 border border-purple-200 hover:border-purple-400 text-purple-950 text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer transition-all active:scale-95"
+                title="Vào Phòng 4: Ghép đôi sự kiện (Cột A - Cột B)"
+              >
+                <ArrowRightLeft className="w-3.5 h-3.5 text-purple-600" />
+                <span>Phòng 4: Ghép Đôi</span>
+                <span className="bg-purple-100 text-purple-900 text-[10px] px-1.5 py-0.2 rounded-full font-bold">15p</span>
+              </button>
+
+              {/* Phòng 5 */}
+              <button
+                onClick={() => openExamRoomForRole('Tự luận')}
+                className="px-3 py-1.5 rounded-xl bg-white hover:bg-rose-50 border border-rose-200 hover:border-rose-400 text-rose-950 text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer transition-all active:scale-95"
+                title="Vào Phòng 5: Tự luận chuyên sâu (Bộ đếm từ, Rubric, AI chấm thử)"
+              >
+                <Award className="w-3.5 h-3.5 text-rose-600" />
+                <span>Phòng 5: Tự Luận</span>
+                <span className="bg-rose-100 text-rose-900 text-[10px] px-1.5 py-0.2 rounded-full font-bold">35p</span>
+              </button>
+
+              {/* Xem Trung Tâm Hub */}
+              <button
+                onClick={() => setIsExamRoomHubOpen(true)}
+                className="px-3 py-1.5 rounded-xl bg-[#073B66] hover:bg-[#0878C9] text-white text-xs font-black flex items-center gap-1.5 shadow-xs cursor-pointer transition-all"
+                title="Xem danh mục và chọn học viên cho từng phòng"
+              >
+                <span>Chi tiết 5 phòng</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Floating Toast Notification */}
+          {toastMessage && (
+            <div className="fixed bottom-5 right-5 z-50 bg-[#073B66] text-white px-4 py-3 rounded-2xl shadow-xl border border-sky-400 flex items-center gap-2.5 text-xs font-bold animate-in slide-in-from-bottom-3 duration-200">
+              <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{toastMessage}</span>
+            </div>
           )}
 
-          <button
-            onClick={handleOpenAdd}
-            className="px-3.5 py-2 bg-[#0878C9] hover:bg-[#073B66] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            Thêm câu hỏi mới
-          </button>
-        </div>
-      </div>
-
-      {/* QUICK 5-ROOM LAUNCH BAR */}
-      <div className="bg-gradient-to-r from-sky-50 via-indigo-50/50 to-teal-50 border border-sky-200/80 rounded-2xl p-3 flex flex-wrap items-center justify-between gap-2.5 shadow-2xs font-sans">
-        <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-lg bg-[#073B66] text-white flex items-center justify-center font-bold text-xs shadow-2xs">
-            5
-          </div>
-          <span className="text-xs font-black text-[#073B66] uppercase tracking-wide">
-            5 Phòng Thi Chuyên Biệt Môn Lịch Sử:
-          </span>
-          <span className="text-[11px] text-slate-500 hidden lg:inline">
-            (Bấm vào từng phòng để vào thi ngay theo dạng mong muốn)
-          </span>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-1.5">
-          {/* Phòng 1 */}
-          <button
-            onClick={() => {
-              setSelectedRoomMode('Trắc nghiệm đơn');
-              setExamModalInitialTeacherMode(true);
-              setIsStudentExamModalOpen(true);
-            }}
-            className="px-3 py-1.5 rounded-xl bg-white hover:bg-blue-50 border border-blue-200 hover:border-blue-400 text-blue-900 text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer transition-all active:scale-95"
-            title="Vào Phòng 1: Trắc nghiệm đơn (Nhiều lựa chọn A-B-C-D)"
-          >
-            <Layers className="w-3.5 h-3.5 text-blue-600" />
-            <span>Phòng 1: TN Đơn</span>
-            <span className="bg-blue-100 text-blue-800 text-[10px] px-1.5 py-0.2 rounded-full font-bold">15p</span>
-          </button>
-
-          {/* Phòng 2 */}
-          <button
-            onClick={() => {
-              setSelectedRoomMode('Trắc nghiệm đúng sai');
-              setExamModalInitialTeacherMode(true);
-              setIsStudentExamModalOpen(true);
-            }}
-            className="px-3 py-1.5 rounded-xl bg-white hover:bg-amber-50 border border-amber-200 hover:border-amber-400 text-amber-950 text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer transition-all active:scale-95"
-            title="Vào Phòng 2: Đúng / Sai có ngữ liệu tư liệu (Chuẩn 2025)"
-          >
-            <FileText className="w-3.5 h-3.5 text-amber-600" />
-            <span>Phòng 2: Đúng / Sai</span>
-            <span className="bg-amber-100 text-amber-900 text-[10px] px-1.5 py-0.2 rounded-full font-bold">20p</span>
-          </button>
-
-          {/* Phòng 3 */}
-          <button
-            onClick={() => {
-              setSelectedRoomMode('Điền từ');
-              setExamModalInitialTeacherMode(true);
-              setIsStudentExamModalOpen(true);
-            }}
-            className="px-3 py-1.5 rounded-xl bg-white hover:bg-emerald-50 border border-emerald-200 hover:border-emerald-400 text-emerald-950 text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer transition-all active:scale-95"
-            title="Vào Phòng 3: Điền từ vào chỗ trống (Ngân hàng từ khóa)"
-          >
-            <CheckSquare className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Phòng 3: Điền Từ</span>
-            <span className="bg-emerald-100 text-emerald-900 text-[10px] px-1.5 py-0.2 rounded-full font-bold">15p</span>
-          </button>
-
-          {/* Phòng 4 */}
-          <button
-            onClick={() => {
-              setSelectedRoomMode('Nối từ');
-              setExamModalInitialTeacherMode(true);
-              setIsStudentExamModalOpen(true);
-            }}
-            className="px-3 py-1.5 rounded-xl bg-white hover:bg-purple-50 border border-purple-200 hover:border-purple-400 text-purple-950 text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer transition-all active:scale-95"
-            title="Vào Phòng 4: Ghép đôi sự kiện (Cột A - Cột B)"
-          >
-            <ArrowRightLeft className="w-3.5 h-3.5 text-purple-600" />
-            <span>Phòng 4: Ghép Đôi</span>
-            <span className="bg-purple-100 text-purple-900 text-[10px] px-1.5 py-0.2 rounded-full font-bold">15p</span>
-          </button>
-
-          {/* Phòng 5 */}
-          <button
-            onClick={() => {
-              setSelectedRoomMode('Tự luận');
-              setExamModalInitialTeacherMode(true);
-              setIsStudentExamModalOpen(true);
-            }}
-            className="px-3 py-1.5 rounded-xl bg-white hover:bg-rose-50 border border-rose-200 hover:border-rose-400 text-rose-950 text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer transition-all active:scale-95"
-            title="Vào Phòng 5: Tự luận chuyên sâu (Bộ đếm từ, Rubric, AI chấm thử)"
-          >
-            <Award className="w-3.5 h-3.5 text-rose-600" />
-            <span>Phòng 5: Tự Luận</span>
-            <span className="bg-rose-100 text-rose-900 text-[10px] px-1.5 py-0.2 rounded-full font-bold">35p</span>
-          </button>
-
-          {/* Xem Trung Tâm Hub */}
-          <button
-            onClick={() => setIsExamRoomHubOpen(true)}
-            className="px-3 py-1.5 rounded-xl bg-[#073B66] hover:bg-[#0878C9] text-white text-xs font-black flex items-center gap-1.5 shadow-xs cursor-pointer transition-all"
-            title="Xem danh mục và chọn học viên cho từng phòng"
-          >
-            <span>Chi tiết 5 phòng</span>
-            <ChevronRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
-
-      {/* Floating Toast Notification */}
-      {toastMessage && (
-        <div className="fixed bottom-5 right-5 z-50 bg-[#073B66] text-white px-4 py-3 rounded-2xl shadow-xl border border-sky-400 flex items-center gap-2.5 text-xs font-bold animate-in slide-in-from-bottom-3 duration-200">
-          <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
-
-      {/* Type Statistics Pills */}
-      <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 no-print">
-        <button
-          onClick={() => setSelectedType('all')}
-          className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-            selectedType === 'all'
-              ? 'bg-[#073B66] text-white border-[#073B66] shadow-xs'
-              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-          }`}
-        >
-          <div className="text-[11px] font-medium opacity-80">Tất cả dạng</div>
-          <div className="text-lg font-bold">{typeCounts.all} câu</div>
-        </button>
+          {/* Type Statistics Pills */}
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 no-print">
+            <button
+              onClick={() => setSelectedType('all')}
+              className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                selectedType === 'all'
+                  ? 'bg-[#073B66] text-white border-[#073B66] shadow-xs'
+                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              <div className="text-[11px] font-medium opacity-80">Tất cả dạng</div>
+              <div className="text-lg font-bold">{typeCounts.all} câu</div>
+            </button>
 
         <button
           onClick={() => setSelectedType('Trắc nghiệm đơn')}
@@ -2174,6 +2325,8 @@ D. Những dự đoán của con người...
           </div>
         </div>
       </Modal>
+        </>
+      )}
 
       {/* Modal: Word Batch Import */}
       <WordImportModal

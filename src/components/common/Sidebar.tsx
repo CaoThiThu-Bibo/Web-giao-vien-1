@@ -27,29 +27,40 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
 }
 
-export const Sidebar: React.FC = () => {
-  const { activeTab, setActiveTab } = useApp();
+interface SidebarProps {
+  onNavigate?: () => void;
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({ onNavigate }) => {
+  const { activeTab, setActiveTab, userRole } = useApp();
   const { currentUser, isAuthenticated, logout } = useAuth();
   const [isAuthOpen, setIsAuthOpen] = useState(false);
 
-  const navItems: NavItem[] = [
-    { id: 'dashboard', label: 'Trang chủ', icon: Home },
+  const isStudentAccount = currentUser?.role === 'student' || userRole === 'student';
+
+  const allNavItems: NavItem[] = [
+    { id: 'dashboard', label: isStudentAccount ? 'Trang chủ Học viên' : 'Trang chủ', icon: Home },
     { id: 'students', label: 'Quản lý học sinh', icon: Users },
     { id: 'classes', label: 'Quản lý lớp học', icon: Building2 },
     { id: 'gradebook', label: 'Sổ điểm điện tử', icon: ClipboardList },
     { id: 'attendance', label: 'Chuyên cần', icon: CalendarCheck },
     { id: 'reports', label: 'Báo cáo - Thống kê', icon: BarChart3 },
     { id: 'ai-assistant', label: 'Trợ lý AI soạn bài', icon: Sparkles },
-    { id: 'question-bank', label: 'Ngân hàng đề kiểm tra', icon: FileQuestion },
+    { id: 'question-bank', label: isStudentAccount ? '5 Phòng Thi & Ôn Luyện' : 'Ngân hàng đề kiểm tra', icon: FileQuestion },
     { id: 'materials', label: 'Học liệu - Tư liệu', icon: BookOpen },
-    { id: 'online-room', label: 'Phòng học trực tuyến', icon: MonitorPlay },
+    { id: 'online-room', label: isStudentAccount ? 'Bài Tập Trực Tuyến' : 'Phòng học trực tuyến', icon: MonitorPlay },
     { id: 'student-support', label: 'Hỗ trợ học sinh', icon: HeartHandshake },
     { id: 'settings', label: 'Cài đặt hệ thống', icon: Settings },
   ];
 
+  const studentAllowedIds: ActiveTab[] = ['dashboard', 'question-bank', 'online-room', 'materials', 'student-support'];
+  const navItems = isStudentAccount
+    ? allNavItems.filter((item) => studentAllowedIds.includes(item.id))
+    : allNavItems;
+
   return (
     <>
-      <aside className="w-64 bg-[#073B66] text-white flex flex-col shrink-0 select-none border-r border-[#085a96]/40 min-h-[calc(100vh-64px)] shadow-lg">
+      <aside className="w-64 bg-[#073B66] text-white flex flex-col shrink-0 select-none border-r border-[#085a96]/40 h-full min-h-[calc(100vh-64px)] shadow-lg">
         {/* Navigation List */}
         <nav className="p-3 space-y-1 flex-1 overflow-y-auto">
           {navItems.map((item) => {
@@ -59,8 +70,11 @@ export const Sidebar: React.FC = () => {
             return (
               <button
                 key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all cursor-pointer ${
+                onClick={() => {
+                  setActiveTab(item.id);
+                  onNavigate?.();
+                }}
+                className={`w-full min-h-[44px] flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all cursor-pointer ${
                   isActive
                     ? 'bg-[#0878C9] text-white shadow-md font-bold translate-x-1'
                     : 'text-slate-200 hover:bg-white/10 hover:text-white'

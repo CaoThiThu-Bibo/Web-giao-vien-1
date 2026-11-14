@@ -58,6 +58,7 @@ export const Header: React.FC = () => {
   };
 
   const currentRole = currentUser?.role || systemConfig.activeRole;
+  const isStudentAccount = currentRole === 'student';
   const roleBadge = getRoleBadge(currentRole);
 
   return (
@@ -71,11 +72,11 @@ export const Header: React.FC = () => {
           }}
         />
 
-        <div className="relative mx-auto px-4 lg:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3">
+        <div className="relative mx-auto px-3 sm:px-4 lg:px-6 py-2 sm:py-2.5 flex flex-wrap items-center justify-between gap-2 sm:gap-3">
           {/* Left: Brand Identity */}
           <div
-            onClick={() => setActiveTab('dashboard')}
-            className="flex items-center gap-3 cursor-pointer group transition-transform active:scale-98"
+            onClick={() => setActiveTab(isStudentAccount ? 'question-bank' : 'dashboard')}
+            className="flex items-center gap-2.5 sm:gap-3 cursor-pointer group transition-transform active:scale-98"
           >
             <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-[#0878C9] to-[#073B66] border border-[#DDF1FF]/40 shadow-inner flex items-center justify-center p-2 text-white group-hover:border-white transition-colors">
               <BookOpen className="w-6 h-6 sm:w-7 sm:h-7 text-[#DDF1FF]" />
@@ -169,71 +170,75 @@ export const Header: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Quick switch account */}
-                    <div className="p-3 bg-slate-50 border-b border-slate-100">
-                      <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1">
-                        <Sparkles className="w-3 h-3 text-amber-500" />
-                        Chuyển nhanh tài khoản mẫu:
+                    {/* Quick switch account (Chỉ hiển thị cho Giáo viên / Admin, ẩn hoàn toàn đối với Học sinh) */}
+                    {!isStudentAccount && (
+                      <div className="p-3 bg-slate-50 border-b border-slate-100">
+                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+                          <Sparkles className="w-3 h-3 text-amber-500" />
+                          Chuyển nhanh tài khoản mẫu:
+                        </div>
+                        <div className="grid grid-cols-3 gap-1.5 text-center">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              quickLogin('teacher');
+                              setShowUserMenu(false);
+                            }}
+                            className={`p-1.5 rounded-lg border text-[11px] font-medium transition-colors cursor-pointer ${
+                              currentUser.role === 'teacher'
+                                ? 'bg-[#073B66] text-white border-[#073B66]'
+                                : 'bg-white border-slate-200 hover:bg-slate-100 text-slate-700'
+                            }`}
+                          >
+                            Cô Thu
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              quickLogin('admin');
+                              setShowUserMenu(false);
+                            }}
+                            className={`p-1.5 rounded-lg border text-[11px] font-medium transition-colors cursor-pointer ${
+                              currentUser.role === 'admin'
+                                ? 'bg-purple-900 text-white border-purple-900'
+                                : 'bg-white border-slate-200 hover:bg-slate-100 text-slate-700'
+                            }`}
+                          >
+                            Admin
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              quickLogin('student');
+                              setShowUserMenu(false);
+                            }}
+                            className={`p-1.5 rounded-lg border text-[11px] font-medium transition-colors cursor-pointer ${
+                              currentUser.role === 'student'
+                                ? 'bg-emerald-800 text-white border-emerald-800'
+                                : 'bg-white border-slate-200 hover:bg-slate-100 text-slate-700'
+                            }`}
+                          >
+                            Học sinh
+                          </button>
+                        </div>
                       </div>
-                      <div className="grid grid-cols-3 gap-1.5 text-center">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            quickLogin('teacher');
-                            setShowUserMenu(false);
-                          }}
-                          className={`p-1.5 rounded-lg border text-[11px] font-medium transition-colors cursor-pointer ${
-                            currentUser.role === 'teacher'
-                              ? 'bg-[#073B66] text-white border-[#073B66]'
-                              : 'bg-white border-slate-200 hover:bg-slate-100 text-slate-700'
-                          }`}
-                        >
-                          Cô Thu
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            quickLogin('admin');
-                            setShowUserMenu(false);
-                          }}
-                          className={`p-1.5 rounded-lg border text-[11px] font-medium transition-colors cursor-pointer ${
-                            currentUser.role === 'admin'
-                              ? 'bg-purple-900 text-white border-purple-900'
-                              : 'bg-white border-slate-200 hover:bg-slate-100 text-slate-700'
-                          }`}
-                        >
-                          Admin
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            quickLogin('student');
-                            setShowUserMenu(false);
-                          }}
-                          className={`p-1.5 rounded-lg border text-[11px] font-medium transition-colors cursor-pointer ${
-                            currentUser.role === 'student'
-                              ? 'bg-emerald-800 text-white border-emerald-800'
-                              : 'bg-white border-slate-200 hover:bg-slate-100 text-slate-700'
-                          }`}
-                        >
-                          Học sinh
-                        </button>
-                      </div>
-                    </div>
+                    )}
 
                     {/* Menu actions */}
                     <div className="p-2 divide-y divide-slate-100 text-xs">
                       <div className="py-1">
-                        <button
-                          onClick={() => {
-                            setShowUserMenu(false);
-                            setActiveTab('settings');
-                          }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition-colors text-left cursor-pointer"
-                        >
-                          <Settings className="w-4 h-4 text-slate-500" />
-                          <span>Thông tin hệ thống & Cài đặt</span>
-                        </button>
+                        {!isStudentAccount && (
+                          <button
+                            onClick={() => {
+                              setShowUserMenu(false);
+                              setActiveTab('settings');
+                            }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition-colors text-left cursor-pointer"
+                          >
+                            <Settings className="w-4 h-4 text-slate-500" />
+                            <span>Thông tin hệ thống & Cài đặt</span>
+                          </button>
+                        )}
                         <button
                           onClick={() => {
                             setShowUserMenu(false);
@@ -244,13 +249,15 @@ export const Header: React.FC = () => {
                           <KeyRound className="w-4 h-4 text-[#0878C9]" />
                           <span>Đổi mật khẩu</span>
                         </button>
-                        <button
-                          onClick={() => handleOpenAuth('register')}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition-colors text-left cursor-pointer"
-                        >
-                          <UserPlus className="w-4 h-4 text-emerald-600" />
-                          <span>Đăng ký tài khoản khác</span>
-                        </button>
+                        {!isStudentAccount && (
+                          <button
+                            onClick={() => handleOpenAuth('register')}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition-colors text-left cursor-pointer"
+                          >
+                            <UserPlus className="w-4 h-4 text-emerald-600" />
+                            <span>Đăng ký tài khoản khác</span>
+                          </button>
+                        )}
                       </div>
 
                       <div className="pt-1">
@@ -369,30 +376,34 @@ export const Header: React.FC = () => {
               )}
             </div>
 
-            {/* Supabase Status Pill */}
-            <button
-              onClick={() => setActiveTab('settings')}
-              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 transition-colors text-xs cursor-pointer group"
-              title={`Supabase: ${supabaseStatus.message}`}
-            >
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  supabaseStatus.connected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
-                }`}
-              />
-              <span className="font-semibold text-[11px] text-[#DDF1FF] group-hover:text-white">
-                Supabase
-              </span>
-            </button>
+            {!isStudentAccount && (
+              <>
+                {/* Supabase Status Pill */}
+                <button
+                  onClick={() => setActiveTab('settings')}
+                  className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 transition-colors text-xs cursor-pointer group"
+                  title={`Supabase: ${supabaseStatus.message}`}
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      supabaseStatus.connected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
+                    }`}
+                  />
+                  <span className="font-semibold text-[11px] text-[#DDF1FF] group-hover:text-white">
+                    Supabase
+                  </span>
+                </button>
 
-            {/* Settings Button */}
-            <button
-              onClick={() => setActiveTab('settings')}
-              className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-[#DDF1FF] hover:text-white transition-colors cursor-pointer"
-              title="Cài đặt hệ thống"
-            >
-              <Settings className="w-5 h-5" />
-            </button>
+                {/* Settings Button */}
+                <button
+                  onClick={() => setActiveTab('settings')}
+                  className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-[#DDF1FF] hover:text-white transition-colors cursor-pointer"
+                  title="Cài đặt hệ thống"
+                >
+                  <Settings className="w-5 h-5" />
+                </button>
+              </>
+            )}
           </div>
         </div>
       </header>
