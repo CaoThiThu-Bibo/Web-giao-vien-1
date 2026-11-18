@@ -78,6 +78,7 @@ export const GraduationExamModal: React.FC<GraduationExamModalProps> = ({
   >('grading');
 
   const [isStudentExamRoomOpen, setIsStudentExamRoomOpen] = useState(false);
+  const [isCompactSheetMode, setIsCompactSheetMode] = useState(false);
 
   // Default Standard MOET 2025 Exam
   const defaultMoetExam: GraduationExamItem = useMemo(() => {
@@ -1158,62 +1159,58 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
     >
       <div className="space-y-4 text-xs font-sans">
         {/* Ministry Standard Badge & Summary Header */}
-        <div className="p-4 bg-gradient-to-r from-[#073B66] via-[#0878C9] to-sky-700 text-white rounded-2xl shadow-sm space-y-2.5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="space-y-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="bg-amber-400 text-slate-900 font-extrabold px-2.5 py-0.5 rounded-full text-[10px] uppercase tracking-wider shadow-xs">
+        <div className="p-3 sm:p-4 bg-gradient-to-r from-[#073B66] via-[#0878C9] to-sky-700 text-white rounded-2xl shadow-sm space-y-2.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3">
+            <div className="space-y-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <span className="bg-amber-400 text-slate-900 font-extrabold px-2 py-0.5 rounded-md text-[10px] uppercase tracking-wider shadow-xs">
                   Quyết định 764/QĐ-BGDĐT 2025
                 </span>
                 <span className="bg-white/20 text-white px-2 py-0.5 rounded text-[10px] font-medium">
                   {currentExam.code}
                 </span>
                 <span className="bg-emerald-500 text-white px-2 py-0.5 rounded text-[10px] font-bold">
-                  Thang điểm chuẩn: 10,0
-                </span>
-                <span className="bg-purple-500 text-white px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1">
-                  <Sparkles className="w-3 h-3 text-purple-200" />
-                  AI Tự soạn từ tư liệu
+                  Thang điểm: 10,0
                 </span>
               </div>
-              <h3 className="text-base sm:text-lg font-bold tracking-tight">
+              <h3 className="text-sm sm:text-lg font-bold tracking-tight break-words leading-snug">
                 {currentExam.title}
               </h3>
-              <p className="text-sky-100 text-[11px]">
+              <p className="text-sky-100 text-[11px] break-words">
                 {currentExam.topic} • Giáo viên: Cô Cao Thị Thu (Phân hiệu Tiên Yên)
               </p>
             </div>
 
             {/* Quick Live Score Badge */}
-            <div className="bg-white/10 backdrop-blur-md p-3 rounded-xl border border-white/20 shrink-0 text-center min-w-[170px]">
-              <div className="text-[10px] uppercase font-bold text-sky-200">Tổng điểm tự động</div>
-              <div className="text-2xl font-black text-amber-300">
+            <div className="bg-white/10 backdrop-blur-md p-2.5 sm:p-3 rounded-xl border border-white/20 shrink-0 text-center sm:min-w-[170px] flex sm:flex-col items-center justify-between sm:justify-center gap-2">
+              <div className="text-[10px] uppercase font-bold text-sky-200">Tổng điểm hiện tại</div>
+              <div className="text-xl sm:text-2xl font-black text-amber-300 tabular-nums">
                 {scoreResult.totalScore.toFixed(2)}{' '}
                 <span className="text-xs font-normal text-white/80">/ 10,0</span>
               </div>
-              <div className="text-[10px] font-semibold text-white/90">
+              <div className="hidden sm:block text-[10px] font-semibold text-white/90">
                 {scoreResult.evaluationText}
               </div>
             </div>
           </div>
 
           {/* Quick Specifications Bar */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 border-t border-white/15 text-[11px]">
-            <div className="bg-black/15 px-3 py-1.5 rounded-lg flex items-center justify-between">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 sm:gap-2 pt-2 border-t border-white/15 text-[11px]">
+            <div className="bg-black/15 px-3 py-1.5 rounded-lg flex items-center justify-between gap-2">
               <span>Phần I: Trắc nghiệm 4 chọn 1</span>
-              <strong className="text-amber-300">
-                {part1Questions.length} câu × 0,25đ = {(part1Questions.length * 0.25).toFixed(1)}đ
+              <strong className="text-amber-300 tabular-nums shrink-0">
+                {part1Questions.length} câu × 0,25đ
               </strong>
             </div>
-            <div className="bg-black/15 px-3 py-1.5 rounded-lg flex items-center justify-between">
+            <div className="bg-black/15 px-3 py-1.5 rounded-lg flex items-center justify-between gap-2">
               <span>Phần II: Đúng/Sai bậc thang</span>
-              <strong className="text-amber-300">
-                {part2Questions.length} câu × 1,0đ = {(part2Questions.length * 1.0).toFixed(1)}đ
+              <strong className="text-amber-300 tabular-nums shrink-0">
+                {part2Questions.length} câu × 1,0đ
               </strong>
             </div>
-            <div className="bg-black/15 px-3 py-1.5 rounded-lg flex items-center justify-between">
-              <span>Barem Đúng/Sai của Bộ</span>
-              <strong className="text-sky-200">1: 0.1đ | 2: 0.25đ | 3: 0.5đ | 4: 1.0đ</strong>
+            <div className="bg-black/15 px-3 py-1.5 rounded-lg flex items-center justify-between gap-2">
+              <span>Barem Đúng/Sai</span>
+              <strong className="text-sky-200 tabular-nums shrink-0">0.1 | 0.25 | 0.5 | 1.0đ</strong>
             </div>
           </div>
         </div>
@@ -1280,14 +1277,16 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
             {/* Tab 4: Grading Room */}
             <button
               onClick={() => setActiveTab('grading')}
-              className={`px-3.5 py-2 rounded-xl font-extrabold flex items-center gap-1.5 cursor-pointer transition-all ${
+              className={`px-3 sm:px-3.5 py-2 rounded-xl font-extrabold flex items-center gap-1.5 cursor-pointer transition-all ${
                 activeTab === 'grading'
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
               }`}
             >
-              <Calculator className="w-4 h-4 text-emerald-600" />
-              Phòng Luyện thi & Chấm điểm (Thang 10)
+              <Calculator
+                className={`w-4 h-4 ${activeTab === 'grading' ? 'text-white' : 'text-emerald-600'}`}
+              />
+              Phòng Luyện thi & Chấm điểm
             </button>
 
             {/* Tab 5: Complete Exam */}
@@ -1319,23 +1318,25 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setIsStudentExamRoomOpen(true)}
-              className="px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+              className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
               title="Mở phòng làm bài thi trực tuyến có đếm ngược thời gian và chấm điểm chi tiết tự động cho học sinh"
             >
               <Award className="w-4 h-4 text-amber-200" />
               Làm bài thi (Học sinh)
             </button>
 
-            <button
-              onClick={handlePrint}
-              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
-            >
-              <Printer className="w-4 h-4" />
-              In đề thi
-            </button>
+            {userRole !== 'student' && (
+              <button
+                onClick={handlePrint}
+                className="px-3 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+              >
+                <Printer className="w-4 h-4" />
+                In đề thi
+              </button>
+            )}
 
             {onImportToBank && userRole !== 'student' && (
               <button
@@ -2700,9 +2701,9 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
             TAB 4: COMPLETE EXAM VIEW & PRINT FORMAT
            ========================================================================= */}
         {activeTab === 'exam' && (
-          <div className="p-6 bg-white rounded-2xl border border-slate-200 space-y-6 shadow-xs">
+          <div className="p-3.5 sm:p-6 bg-white rounded-2xl border border-slate-200 space-y-5 sm:space-y-6 shadow-xs">
             {/* Formal Vietnamese Exam Header */}
-            <div className="grid grid-cols-2 gap-4 pb-4 border-b border-slate-300">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 pb-4 border-b border-slate-300">
               <div className="text-center font-serif space-y-0.5">
                 <div className="font-bold text-[11px] uppercase tracking-wide">
                   SỞ GIÁO DỤC VÀ ĐÀO TẠO QUẢNG NINH
@@ -2866,77 +2867,102 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
             TAB 5: INTERACTIVE LIVE GRADING ROOM (AUTOMATIC SCORING ENGINE)
            ========================================================================= */}
         {activeTab === 'grading' && (
-          <div className="space-y-5">
+          <div className="space-y-4 sm:space-y-5">
             {/* Live Score Board Card */}
-            <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-4">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-3 border-b border-slate-200">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1">
-                      <Sparkles className="w-3 h-3" />
-                      Auto-Grading Live Calculator
-                    </span>
-                    <span className="text-slate-400">•</span>
-                    <span className="text-slate-600 font-medium font-mono">
-                      Đang luyện: {currentExam.title} ({currentExam.code})
-                    </span>
+            <div className="p-3.5 sm:p-4 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-3.5 sm:space-y-4">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-200">
+                <div className="min-w-0">
+                  <div className="text-[11px] text-slate-500 font-medium break-words mb-0.5">
+                    {userRole === 'student' ? 'Chế độ Luyện thi trực tiếp' : 'Chấm điểm trực tiếp'} · {currentExam.title} ({currentExam.code})
                   </div>
                   <h4 className="text-sm font-bold text-slate-800">
-                    Bảng điều khiển chấm bài và tính điểm tức thời (Tổng 10,0 điểm)
+                    {userRole === 'student'
+                      ? 'Làm bài & Tự chấm điểm tức thời (Thang 10,0)'
+                      : 'Bảng điều khiển chấm bài và tính điểm tức thời (Tổng 10,0 điểm)'}
                   </h4>
                 </div>
 
                 {/* Preset Controls */}
                 <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    onClick={handleFillAllCorrect}
-                    className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-xl font-bold flex items-center gap-1 cursor-pointer transition-colors border border-emerald-200"
-                  >
-                    <CheckCheck className="w-3.5 h-3.5" />
-                    Điền 100% Đúng (10đ)
-                  </button>
+                  {userRole !== 'student' ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setIsCompactSheetMode((v) => !v)}
+                        className={`px-3 py-2 rounded-xl font-bold flex items-center gap-1.5 cursor-pointer transition-colors border text-xs ${
+                          isCompactSheetMode
+                            ? 'bg-indigo-600 text-white border-indigo-600'
+                            : 'bg-indigo-50 text-indigo-800 border-indigo-200 hover:bg-indigo-100'
+                        }`}
+                        title="Bật/tắt chế độ phiếu tô gọn cho giáo viên"
+                      >
+                        <Layers className="w-3.5 h-3.5" />
+                        {isCompactSheetMode ? 'Đang thu gọn (Hiện đủ câu)' : 'Phiếu tô gọn'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleFillAllCorrect}
+                        className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-xl font-bold flex items-center gap-1 cursor-pointer transition-colors border border-emerald-200"
+                      >
+                        <CheckCheck className="w-3.5 h-3.5" />
+                        Điền 100% Đúng (10đ)
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleFillGoodSample}
+                        className="px-3 py-2 bg-sky-50 hover:bg-sky-100 text-sky-800 rounded-xl font-bold flex items-center gap-1 cursor-pointer transition-colors border border-sky-200"
+                      >
+                        <TrendingUp className="w-3.5 h-3.5" />
+                        Chấm thử học sinh khá (~8đ)
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setIsStudentExamRoomOpen(true)}
+                      className="min-h-[42px] px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                    >
+                      <Award className="w-4 h-4 text-amber-200" />
+                      Vào phòng thi tính giờ (50 phút)
+                    </button>
+                  )}
 
                   <button
-                    onClick={handleFillGoodSample}
-                    className="px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-800 rounded-xl font-bold flex items-center gap-1 cursor-pointer transition-colors border border-sky-200"
-                  >
-                    <TrendingUp className="w-3.5 h-3.5" />
-                    Chấm thử học sinh khá (~8đ)
-                  </button>
-
-                  <button
+                    type="button"
                     onClick={handleResetAnswers}
-                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                    className="min-h-[40px] px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold flex items-center gap-1 cursor-pointer transition-colors"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
-                    Làm sạch
+                    Làm lại
                   </button>
                 </div>
               </div>
 
               {/* Real-time score metrics */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="p-3 bg-sky-50 rounded-xl border border-sky-200 text-center">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
+                <div className="p-2.5 sm:p-3 bg-sky-50 rounded-xl border border-sky-200 text-center">
                   <div className="text-[11px] text-sky-700 font-medium">
                     Điểm Phần I ({part1Questions.length} câu)
                   </div>
-                  <div className="text-xl font-black text-[#073B66] mt-0.5">
+                  <div className="text-lg sm:text-xl font-black text-[#073B66] mt-0.5 tabular-nums">
                     {scoreResult.part1Score.toFixed(2)}
                     <span className="text-xs font-normal text-slate-500">
                       {' '}
                       / {(part1Questions.length * 0.25).toFixed(1)}
                     </span>
                   </div>
-                  <div className="text-[10px] text-sky-600 font-semibold mt-0.5">
+                  <div className="text-[10px] text-sky-600 font-semibold mt-0.5 tabular-nums">
                     {scoreResult.part1CorrectCount} / {part1Questions.length} câu đúng (×0,25đ)
                   </div>
                 </div>
 
-                <div className="p-3 bg-purple-50 rounded-xl border border-purple-200 text-center">
+                <div className="p-2.5 sm:p-3 bg-purple-50 rounded-xl border border-purple-200 text-center">
                   <div className="text-[11px] text-purple-700 font-medium">
                     Điểm Phần II ({part2Questions.length} câu Đ/S)
                   </div>
-                  <div className="text-xl font-black text-purple-900 mt-0.5">
+                  <div className="text-lg sm:text-xl font-black text-purple-900 mt-0.5 tabular-nums">
                     {scoreResult.part2Score.toFixed(2)}
                     <span className="text-xs font-normal text-slate-500">
                       {' '}
@@ -2948,9 +2974,9 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
                   </div>
                 </div>
 
-                <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-center">
-                  <div className="text-[11px] text-emerald-700 font-medium">TỔNG ĐIỂM TOÀN BÀI</div>
-                  <div className="text-2xl font-black text-emerald-700 mt-0.5">
+                <div className="p-2.5 sm:p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-center">
+                  <div className="text-[11px] text-emerald-700 font-medium">TỔNG ĐIỂM</div>
+                  <div className="text-xl sm:text-2xl font-black text-emerald-700 mt-0.5 tabular-nums">
                     {scoreResult.totalScore.toFixed(2)}
                     <span className="text-xs font-normal text-slate-500"> / 10,0</span>
                   </div>
@@ -2959,13 +2985,13 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
                   </div>
                 </div>
 
-                <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-center flex flex-col justify-center">
+                <div className="p-2.5 sm:p-3 bg-amber-50 rounded-xl border border-amber-200 text-center flex flex-col justify-center">
                   <div className="text-[11px] text-amber-800 font-medium">Xếp loại Thông tư 43</div>
-                  <div className="text-sm font-bold text-amber-900 mt-1">
+                  <div className="text-xs sm:text-sm font-bold text-amber-900 mt-1">
                     {scoreResult.evaluationText}
                   </div>
                   <div className="text-[10px] text-amber-700 mt-0.5">
-                    {scoreResult.totalScore >= 5.0 ? '✓ Đủ chuẩn tốt nghiệp' : '⚠ Cần phụ đạo thêm'}
+                    {scoreResult.totalScore >= 5.0 ? '✓ Đủ chuẩn tốt nghiệp' : 'Cần ôn tập thêm'}
                   </div>
                 </div>
               </div>
@@ -2973,115 +2999,121 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
               {/* Pedagogical Comment Card */}
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-start gap-2.5">
                 <BookOpen className="w-4 h-4 text-[#0878C9] shrink-0 mt-0.5" />
-                <div className="space-y-0.5">
+                <div className="space-y-0.5 min-w-0">
                   <span className="font-bold text-slate-800">
                     Nhận xét sư phạm tự động dành cho học viên GDTX:
                   </span>
-                  <p className="text-slate-600 italic leading-relaxed">
+                  <p className="text-slate-600 italic leading-relaxed break-words">
                     "{scoreResult.pedagogicalComment}"
                   </p>
                 </div>
               </div>
 
-              {/* Save directly to Gradebook */}
-              <div className="p-3 bg-blue-50/70 rounded-xl border border-blue-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-bold text-slate-700">Lưu kết quả vào sổ điểm:</span>
-                  <select
-                    value={selectedClassId}
-                    onChange={(e) => {
-                      setSelectedClassId(e.target.value);
-                      const stds = students.filter((s) => s.classId === e.target.value);
-                      setSelectedStudentId(stds[0]?.id || '');
-                    }}
-                    className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-bold text-[#073B66]"
-                  >
-                    {classes.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} (Khối {c.grade})
-                      </option>
-                    ))}
-                  </select>
+              {/* Save directly to Gradebook (Teacher only) */}
+              {userRole !== 'student' && (
+                <div className="p-3 bg-blue-50/70 rounded-xl border border-blue-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-bold text-slate-700">Lưu kết quả vào sổ điểm:</span>
+                    <select
+                      value={selectedClassId}
+                      onChange={(e) => {
+                        setSelectedClassId(e.target.value);
+                        const stds = students.filter((s) => s.classId === e.target.value);
+                        setSelectedStudentId(stds[0]?.id || '');
+                      }}
+                      className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-[#073B66]"
+                    >
+                      {classes.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} (Khối {c.grade})
+                        </option>
+                      ))}
+                    </select>
 
-                  <select
-                    value={selectedStudentId}
-                    onChange={(e) => setSelectedStudentId(e.target.value)}
-                    className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 max-w-[200px]"
-                  >
-                    {classStudents.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.code} - {s.fullName}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                    <select
+                      value={selectedStudentId}
+                      onChange={(e) => setSelectedStudentId(e.target.value)}
+                      className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 max-w-[200px]"
+                    >
+                      {classStudents.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.code} - {s.fullName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                <div className="flex items-center gap-2">
-                  {saveSuccessMsg && (
-                    <span className="text-emerald-700 font-bold text-xs flex items-center gap-1">
-                      <CheckCircle className="w-3.5 h-3.5" /> {saveSuccessMsg}
-                    </span>
-                  )}
-                  <button
-                    onClick={handleSaveToGradebook}
-                    className="px-3.5 py-1.5 bg-[#0878C9] hover:bg-[#073B66] text-white rounded-xl font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors shrink-0"
-                  >
-                    <Save className="w-3.5 h-3.5" />
-                    Lưu điểm vào Sổ điểm
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {saveSuccessMsg && (
+                      <span className="text-emerald-700 font-bold text-xs flex items-center gap-1">
+                        <CheckCircle className="w-3.5 h-3.5" /> {saveSuccessMsg}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleSaveToGradebook}
+                      className="px-3.5 py-2 bg-[#0878C9] hover:bg-[#073B66] text-white rounded-xl font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors shrink-0"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      Lưu điểm vào Sổ điểm
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
-            {/* INTERACTIVE QUESTION TICKING */}
-            <div className="space-y-6">
+            {/* INTERACTIVE QUESTION LIST — ALWAYS SHOW FULL QUESTIONS & FULL OPTIONS ON MOBILE & DESKTOP */}
+            <div className="space-y-5 sm:space-y-6">
               {/* PART 1 TICKING */}
-              <div className="p-5 bg-white rounded-2xl border border-slate-200 space-y-4">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+              <div className="p-3 sm:p-5 bg-white rounded-2xl border border-slate-200 space-y-3.5 sm:space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-200">
                   <h4 className="font-bold text-[#073B66] uppercase text-xs flex items-center gap-2">
-                    <span className="bg-[#073B66] text-white px-2 py-0.5 rounded text-[10px]">
+                    <span className="bg-[#073B66] text-white px-2 py-0.5 rounded text-[10px] shrink-0">
                       Phần I
                     </span>
-                    <span>
-                      Chấm điểm {part1Questions.length} câu trắc nghiệm đơn (0,25 điểm / câu đúng)
+                    <span className="leading-snug">
+                      {userRole === 'student'
+                        ? `Làm ${part1Questions.length} câu trắc nghiệm đơn (0,25 điểm / câu đúng)`
+                        : `Chấm điểm ${part1Questions.length} câu trắc nghiệm đơn (0,25 điểm / câu đúng)`}
                     </span>
                   </h4>
-                  <span className="text-xs font-bold text-emerald-700">
-                    Đã chấm: {Object.keys(part1Answers).length} / {part1Questions.length} câu
+                  <span className="text-xs font-bold text-emerald-700 tabular-nums">
+                    {userRole === 'student' ? 'Đã làm' : 'Đã chấm'}: {Object.keys(part1Answers).length} / {part1Questions.length} câu
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className={isCompactSheetMode && userRole !== 'student' ? 'grid grid-cols-1 md:grid-cols-2 gap-3' : 'grid grid-cols-1 gap-3.5'}>
                   {part1Questions.map((q, qIdx) => {
                     const studentAns = part1Answers[qIdx];
                     const isCorrect = studentAns === q.correctAnswer;
                     const isAnswered = studentAns !== undefined && studentAns !== '';
+                    const compactMode = isCompactSheetMode && userRole !== 'student';
 
                     return (
                       <div
                         key={q.id || qIdx}
-                        className={`p-3 rounded-xl border transition-all ${
+                        className={`p-3 sm:p-4 rounded-xl border transition-all space-y-2.5 ${
                           !isAnswered
-                            ? 'bg-slate-50 border-slate-200'
+                            ? 'bg-slate-50/70 border-slate-200'
                             : isCorrect
                             ? 'bg-emerald-50/50 border-emerald-300'
                             : 'bg-rose-50/50 border-rose-300'
                         }`}
                       >
-                        <div className="flex items-start justify-between gap-2 mb-1.5">
-                          <span className="font-bold text-slate-800 text-[11px] leading-snug">
-                            <span className="text-[#0878C9]">Câu {qIdx + 1}:</span>{' '}
-                            {q.content.slice(0, 75)}...
-                          </span>
-                          <span className="text-[10px] font-bold shrink-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="font-bold text-slate-900 text-xs sm:text-sm leading-relaxed whitespace-pre-line break-words flex-1 min-w-0">
+                            <span className="text-[#0878C9] font-extrabold">Câu {qIdx + 1}:</span>{' '}
+                            {q.content}
+                          </div>
+                          <span className="text-[11px] font-bold shrink-0 tabular-nums">
                             {isAnswered ? (
                               isCorrect ? (
-                                <span className="text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
-                                  +0,25đ
+                                <span className="text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                                  +0,25đ ✓
                                 </span>
                               ) : (
-                                <span className="text-rose-700 bg-rose-100 px-1.5 py-0.5 rounded">
-                                  0,0đ
+                                <span className="text-rose-700 bg-rose-100 px-2 py-0.5 rounded">
+                                  0,0đ · Đáp án {q.correctAnswer}
                                 </span>
                               )
                             ) : (
@@ -3090,59 +3122,109 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
                           </span>
                         </div>
 
-                        {/* A / B / C / D Buttons */}
-                        <div className="flex items-center gap-1.5">
-                          {(['A', 'B', 'C', 'D'] as const).map((optKey) => {
-                            const isSelected = studentAns === optKey;
-                            const isRightKey = q.correctAnswer === optKey;
+                        {compactMode ? (
+                          <div className="flex items-center gap-1.5">
+                            {(['A', 'B', 'C', 'D'] as const).map((optKey) => {
+                              const isSelected = studentAns === optKey;
+                              const isRightKey = q.correctAnswer === optKey;
 
-                            let btnStyle = 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100';
-                            if (isSelected) {
-                              if (isCorrect) {
-                                btnStyle = 'bg-emerald-600 text-white border-emerald-600 font-extrabold';
-                              } else {
-                                btnStyle = 'bg-rose-600 text-white border-rose-600 font-extrabold';
+                              let btnStyle = 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100';
+                              if (isSelected) {
+                                btnStyle = isCorrect
+                                  ? 'bg-emerald-600 text-white border-emerald-600 font-extrabold'
+                                  : 'bg-rose-600 text-white border-rose-600 font-extrabold';
+                              } else if (isAnswered && !isCorrect && isRightKey) {
+                                btnStyle = 'bg-emerald-100 text-emerald-900 border-emerald-300 font-bold';
                               }
-                            } else if (isAnswered && !isCorrect && isRightKey) {
-                              btnStyle = 'bg-emerald-100 text-emerald-900 border-emerald-300 font-bold';
-                            }
 
-                            return (
-                              <button
-                                key={optKey}
-                                type="button"
-                                onClick={() =>
-                                  setPart1Answers((prev) => ({
-                                    ...prev,
-                                    [qIdx]: optKey,
-                                  }))
+                              return (
+                                <button
+                                  key={optKey}
+                                  type="button"
+                                  onClick={() =>
+                                    setPart1Answers((prev) => ({
+                                      ...prev,
+                                      [qIdx]: optKey,
+                                    }))
+                                  }
+                                  className={`flex-1 min-h-[40px] py-1.5 rounded-lg border text-xs font-bold transition-all cursor-pointer ${btnStyle}`}
+                                >
+                                  {optKey}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {(['A', 'B', 'C', 'D'] as const).map((optKey, optIdx) => {
+                              const rawOpt = q.options?.[optIdx] || '';
+                              const optBody = rawOpt.replace(/^[A-D][.)]\s*/i, '').trim();
+                              const isSelected = studentAns === optKey;
+                              const isRightKey = q.correctAnswer === optKey;
+
+                              let cardStyle =
+                                'bg-white border-slate-200 text-slate-800 hover:border-sky-300 hover:bg-sky-50/40';
+                              let badgeStyle = 'bg-slate-100 text-slate-700 border-slate-200';
+
+                              if (isSelected) {
+                                if (isCorrect) {
+                                  cardStyle = 'bg-emerald-50 border-emerald-500 text-emerald-950 font-semibold ring-1 ring-emerald-300';
+                                  badgeStyle = 'bg-emerald-600 text-white border-emerald-600';
+                                } else {
+                                  cardStyle = 'bg-rose-50 border-rose-400 text-rose-950 font-semibold ring-1 ring-rose-300';
+                                  badgeStyle = 'bg-rose-600 text-white border-rose-600';
                                 }
-                                className={`flex-1 py-1 rounded-lg border text-xs font-bold transition-all cursor-pointer ${btnStyle}`}
-                              >
-                                {optKey}
-                              </button>
-                            );
-                          })}
-                        </div>
+                              } else if (isAnswered && !isCorrect && isRightKey) {
+                                cardStyle = 'bg-emerald-50/70 border-emerald-400 text-emerald-900 font-medium';
+                                badgeStyle = 'bg-emerald-600 text-white border-emerald-600';
+                              }
+
+                              return (
+                                <button
+                                  key={optKey}
+                                  type="button"
+                                  onClick={() =>
+                                    setPart1Answers((prev) => ({
+                                      ...prev,
+                                      [qIdx]: optKey,
+                                    }))
+                                  }
+                                  className={`min-h-[44px] w-full text-left p-2.5 sm:p-3 rounded-xl border text-xs sm:text-[13px] leading-relaxed flex items-start gap-2.5 transition-all cursor-pointer ${cardStyle}`}
+                                >
+                                  <span
+                                    className={`w-7 h-7 rounded-lg border font-extrabold text-xs shrink-0 flex items-center justify-center ${badgeStyle}`}
+                                  >
+                                    {optKey}
+                                  </span>
+                                  <span className="flex-1 min-w-0 break-words font-serif pt-0.5">
+                                    {optBody || `Phương án ${optKey}`}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
                 </div>
               </div>
 
-              {/* PART 2 TICKING */}
-              <div className="p-5 bg-white rounded-2xl border border-slate-200 space-y-4">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+              {/* PART 2 TICKING — FULL HISTORICAL DOCUMENT + TOUCH-FRIENDLY TRUE/FALSE */}
+              <div className="p-3 sm:p-5 bg-white rounded-2xl border border-slate-200 space-y-3.5 sm:space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-200">
                   <h4 className="font-bold text-purple-900 uppercase text-xs flex items-center gap-2">
-                    <span className="bg-purple-800 text-white px-2 py-0.5 rounded text-[10px]">
+                    <span className="bg-purple-800 text-white px-2 py-0.5 rounded text-[10px] shrink-0">
                       Phần II
                     </span>
-                    <span>
-                      Chấm điểm {part2Questions.length} câu trắc nghiệm Đúng/Sai (Barem bậc thang 4 mức)
+                    <span className="leading-snug">
+                      {userRole === 'student'
+                        ? `Làm ${part2Questions.length} câu trắc nghiệm Đúng/Sai tư liệu (Tối đa 1,0đ / câu)`
+                        : `Chấm điểm ${part2Questions.length} câu trắc nghiệm Đúng/Sai (Barem bậc thang 4 mức)`}
                     </span>
                   </h4>
-                  <span className="text-xs font-bold text-purple-700">
-                    Tổng điểm Phần II: {scoreResult.part2Score.toFixed(2)} /{' '}
+                  <span className="text-xs font-bold text-purple-700 tabular-nums">
+                    Điểm Phần II: {scoreResult.part2Score.toFixed(2)} /{' '}
                     {(part2Questions.length * 1.0).toFixed(1)}đ
                   </span>
                 </div>
@@ -3155,28 +3237,35 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
                     return (
                       <div
                         key={q.id || qIdx}
-                        className="p-4 bg-slate-50/70 rounded-2xl border border-slate-200 space-y-3"
+                        className="p-3 sm:p-4 bg-slate-50/70 rounded-2xl border border-slate-200 space-y-3"
                       >
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                          <span className="font-bold text-slate-800 text-xs">
+                          <span className="font-bold text-slate-800 text-xs sm:text-sm">
                             <span className="text-purple-800 font-extrabold">
                               Câu {qIdx + 1} (Phần II):
                             </span>{' '}
-                            {q.topic} - {q.knowledgeDomain}
+                            {q.topic}
                           </span>
 
-                          <div className="flex items-center gap-2 shrink-0">
+                          <div className="flex items-center gap-2 shrink-0 tabular-nums">
                             <span className="text-[11px] text-slate-600">
                               Đúng: <strong>{detail?.correctCount ?? 0} / 4 ý</strong>
                             </span>
-                            <span className="bg-purple-100 text-purple-900 px-2.5 py-0.5 rounded-full font-bold text-xs border border-purple-200">
+                            <span className="bg-purple-100 text-purple-900 px-2.5 py-0.5 rounded-lg font-bold text-xs border border-purple-200">
                               Điểm: {detail?.score.toFixed(2) ?? '0.00'} / 1,0đ
                             </span>
                           </div>
                         </div>
 
+                        {/* Full reading stimulus / question text */}
+                        {q.content && (
+                          <div className="p-3 bg-white rounded-xl border border-purple-200 font-serif text-xs sm:text-sm leading-relaxed text-slate-900 whitespace-pre-line break-words">
+                            {q.content}
+                          </div>
+                        )}
+
                         {/* Statement items */}
-                        <div className="space-y-2">
+                        <div className="space-y-2.5">
                           {q.trueFalseStatements?.map((stmt) => {
                             const studentVal = currentAnswers[stmt.id];
                             const isCorrect = studentVal === stmt.isCorrect;
@@ -3185,7 +3274,7 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
                             return (
                               <div
                                 key={stmt.id}
-                                className={`p-2.5 bg-white rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs transition-colors ${
+                                className={`p-3 bg-white rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs sm:text-[13px] transition-colors ${
                                   !isAnswered
                                     ? 'border-slate-200'
                                     : isCorrect
@@ -3193,14 +3282,14 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
                                     : 'border-rose-300 bg-rose-50/30'
                                 }`}
                               >
-                                <div className="flex-1">
+                                <div className="flex-1 min-w-0 font-serif leading-relaxed break-words">
                                   <strong className="mr-1.5 uppercase font-sans text-purple-800">
                                     {stmt.id})
                                   </strong>
-                                  <span className="text-slate-700">{stmt.statement}</span>
+                                  <span className="text-slate-800">{stmt.statement}</span>
                                 </div>
 
-                                <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                                <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
                                   {/* Toggle ĐÚNG */}
                                   <button
                                     type="button"
@@ -3213,12 +3302,12 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
                                         },
                                       }))
                                     }
-                                    className={`px-3 py-1 rounded-lg border text-[11px] font-bold cursor-pointer transition-all ${
+                                    className={`min-h-[42px] px-4 py-1.5 rounded-xl border text-xs font-bold cursor-pointer transition-all ${
                                       studentVal === true
                                         ? stmt.isCorrect === true
                                           ? 'bg-emerald-600 text-white border-emerald-600'
                                           : 'bg-rose-600 text-white border-rose-600'
-                                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                                        : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100'
                                     }`}
                                   >
                                     Đúng {studentVal === true && (stmt.isCorrect ? '✓' : '✗')}
@@ -3236,12 +3325,12 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
                                         },
                                       }))
                                     }
-                                    className={`px-3 py-1 rounded-lg border text-[11px] font-bold cursor-pointer transition-all ${
+                                    className={`min-h-[42px] px-4 py-1.5 rounded-xl border text-xs font-bold cursor-pointer transition-all ${
                                       studentVal === false
                                         ? stmt.isCorrect === false
                                           ? 'bg-emerald-600 text-white border-emerald-600'
                                           : 'bg-rose-600 text-white border-rose-600'
-                                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                                        : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100'
                                     }`}
                                   >
                                     Sai {studentVal === false && (!stmt.isCorrect ? '✓' : '✗')}

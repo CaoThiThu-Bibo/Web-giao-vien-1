@@ -43,28 +43,34 @@ export const Modal: React.FC<ModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-1.5 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
       <div
         className="fixed inset-0"
         onClick={onClose}
         aria-hidden="true"
       />
       <div
-        className={`relative w-full ${maxWidthClasses[maxWidth]} bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh] z-10`}
+        className={`relative w-full ${maxWidthClasses[maxWidth]} bg-white rounded-xl sm:rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[96dvh] sm:max-h-[90vh] z-10`}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-[#073B66] to-[#0878C9] text-white">
-          <h3 className="text-lg font-bold font-serif tracking-wide">{title}</h3>
+        <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 sm:px-6 sm:py-4 bg-gradient-to-r from-[#073B66] to-[#0878C9] text-white shrink-0">
+          <h3 className="text-xs sm:text-base md:text-lg font-bold font-serif tracking-wide leading-snug break-words min-w-0">
+            {title}
+          </h3>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            aria-label="Đóng cửa sổ"
+            className="min-h-[40px] min-w-[40px] p-1.5 rounded-lg text-white/90 hover:text-white hover:bg-white/15 transition-colors cursor-pointer flex items-center justify-center shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-6 overflow-y-auto flex-1">{children}</div>
+        <div className="p-3 sm:p-6 overflow-y-auto overflow-x-hidden flex-1 overscroll-contain">
+          {children}
+        </div>
       </div>
     </div>
   );
