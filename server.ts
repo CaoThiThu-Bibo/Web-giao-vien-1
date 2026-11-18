@@ -740,6 +740,130 @@ Hãy trả về định dạng JSON hợp lệ tuân thủ đúng cấu trúc.
   }
 });
 
+// API: Parse Exam Content Fallback (Văn bản thô, Ảnh chụp đề thi, hoặc PDF khi không tải được file Word)
+app.post('/api/gemini/parse-exam-content', async (req, res) => {
+  const {
+    rawText = '',
+    fileBase64 = '',
+    mimeType = '',
+    examTitle = 'Đề ôn thi tốt nghiệp THPT môn Lịch sử',
+  } = req.body || {};
+
+  if (!rawText?.trim() && !fileBase64) {
+    return res.status(400).json({
+      success: false,
+      message: 'Vui lòng cung cấp nội dung văn bản hoặc file ảnh/PDF để phân tích.',
+    });
+  }
+
+  const prompt = `
+Bạn là chuyên gia số hóa đề thi Lịch sử THPT theo cấu trúc mới của Bộ GD&ĐT Việt Nam (Quyết định 764/QĐ-BGDĐT).
+Hãy đọc kỹ nội dung đề thi được cung cấp (từ văn bản dán, file PDF hoặc ảnh chụp đề thi) và trích xuất chính xác toàn bộ câu hỏi thành JSON:
+1. PHẦN I (part1): Các câu hỏi trắc nghiệm 4 phương án A, B, C, D (chọn 1 đáp án đúng).
+   - Mỗi câu gồm: content (nội dung câu hỏi, bỏ tiền tố "Câu X:"), options (mảng 4 chuỗi dạng "A. ...", "B. ...", "C. ...", "D. ..."), correctAnswer ("A" | "B" | "C" | "D", nếu đề không ghi đáp án thì dự đoán phương án lịch sử chính xác nhất), cognitiveLevel ("Nhận biết" | "Thông hiểu" | "Vận dụng"), explanation (giải thích ngắn gọn).
+2. PHẦN II (part2): Các câu hỏi trắc nghiệm Đúng/Sai (gồm đoạn dẫn/tư liệu và các ý a, b, c, d).
+   - Mỗi câu gồm: content (đoạn trích tư liệu / lời dẫn, bỏ tiền tố "Câu X:"), topic, knowledgeDomain, trueFalseStatements (mảng gồm các ý a, b, c, d với id, statement, isCorrect boolean, explanation).
+3. examTitle: Tên đề thi phù hợp (mặc định: "${examTitle}").
+
+Lưu ý: Giữ nguyên tối đa nội dung gốc của giáo viên, không tự ý bỏ sót câu hỏi.
+${rawText ? `\nNỘI DUNG VĂN BẢN ĐỀ THI CẦN TÁCH:\n"""\n${rawText.slice(0, 30000)}\n"""` : ''}
+`;
+
+  try {
+    if (!ai) {
+      return res.status(503).json({
+        success: false,
+        needsLocalFallback: true,
+        message: 'Máy chủ chưa cấu hình GEMINI_API_KEY để đọc ảnh/PDF bằng AI.',
+      });
+    }
+
+    const contents: any = fileBase64 && mimeType
+      ? {
+          parts: [
+            {
+              inlineData: {
+                mimeType,
+                data: fileBase64,
+              },
+            },
+            { text: prompt },
+          ],
+        }
+      : prompt;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            examTitle: { type: Type.STRING },
+            part1: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  content: { type: Type.STRING },
+                  options: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                  },
+                  correctAnswer: { type: Type.STRING },
+                  cognitiveLevel: { type: Type.STRING },
+                  explanation: { type: Type.STRING },
+                },
+                required: ['content', 'options', 'correctAnswer'],
+              },
+            },
+            part2: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  content: { type: Type.STRING },
+                  topic: { type: Type.STRING },
+                  knowledgeDomain: { type: Type.STRING },
+                  trueFalseStatements: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        id: { type: Type.STRING },
+                        statement: { type: Type.STRING },
+                        isCorrect: { type: Type.BOOLEAN },
+                        explanation: { type: Type.STRING },
+                      },
+                      required: ['id', 'statement', 'isCorrect'],
+                    },
+                  },
+                },
+                required: ['content', 'trueFalseStatements'],
+              },
+            },
+          },
+          required: ['part1', 'part2'],
+        },
+      },
+    });
+
+    const parsedData = JSON.parse(response.text || '{}');
+    return res.json({
+      success: true,
+      data: parsedData,
+      isAiExtracted: true,
+    });
+  } catch (err: any) {
+    console.warn('AI parse-exam-content error:', err?.message);
+    return res.status(500).json({
+      success: false,
+      message: err?.message || 'Không thể tách đề thi bằng AI lúc này.',
+    });
+  }
+});
+
 // API: Student Support & Remedial Recommendation
 app.post('/api/gemini/support-recommendation', async (req, res) => {
   const { studentName, grade, averageScore, attendanceNotes, difficultAreas } = req.body;

@@ -1,10 +1,14 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Modal } from '../common/Modal';
 import { standardGraduationExamQuestions } from '../../data/graduationExamData';
 import { calculateGraduationExamScore, MOET_TF_BAREM } from '../../lib/examScoring';
 import { Question } from '../../types';
-import { extractTextFromFile, parseQuestionsFromText } from '../../lib/wordQuestionParser';
+import {
+  downloadWordTemplate,
+  extractTextFromFile,
+  parseQuestionsFromText,
+} from '../../lib/wordQuestionParser';
 import { StudentExamRoomModal } from './StudentExamRoomModal';
 import {
   Award,
@@ -36,6 +40,10 @@ import {
   BookMarked,
   ArrowRight,
   Download,
+  Edit3,
+  ClipboardPaste,
+  Wand2,
+  Image as ImageIcon,
 } from 'lucide-react';
 
 export interface GraduationExamItem {
@@ -64,9 +72,9 @@ export const GraduationExamModal: React.FC<GraduationExamModalProps> = ({
   const { userRole, classes, students, updateStudentScore, exams, addExam, addQuestion } = useApp();
 
   // Active Tab:
-  // 'library' | 'ai-studio' | 'upload' | 'exam' | 'grading' | 'key'
+  // 'library' | 'ai-studio' | 'upload' | 'manual' | 'exam' | 'grading' | 'key'
   const [activeTab, setActiveTab] = useState<
-    'library' | 'ai-studio' | 'upload' | 'exam' | 'grading' | 'key'
+    'library' | 'ai-studio' | 'upload' | 'manual' | 'exam' | 'grading' | 'key'
   >('grading');
 
   const [isStudentExamRoomOpen, setIsStudentExamRoomOpen] = useState(false);
@@ -465,32 +473,205 @@ Trọng tâm đổi mới là phát triển nền kinh tế hàng hóa nhiều t
   };
 
   // =========================================================================
-  // WORD / TEXT IMPORT EXAM STATE & LOGIC
+  // WORD / TEXT / AI FALLBACK IMPORT EXAM STATE & LOGIC
   // =========================================================================
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadRawText, setUploadRawText] = useState('');
   const [uploadTitle, setUploadTitle] = useState('Đề ôn thi tốt nghiệp tải lên từ Word');
   const [isReadingFile, setIsReadingFile] = useState(false);
+  const [isAiParsingUpload, setIsAiParsingUpload] = useState(false);
+  const [isDraggingUpload, setIsDraggingUpload] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadInfo, setUploadInfo] = useState<string | null>(null);
   const [uploadPreviewExam, setUploadPreviewExam] = useState<GraduationExamItem | null>(null);
+  const uploadTextareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const handleUploadFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadFile(file);
-    setIsReadingFile(true);
+  const readFileAsBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const res = String(reader.result || '');
+        const commaIdx = res.indexOf(',');
+        resolve(commaIdx >= 0 ? res.slice(commaIdx + 1) : res);
+      };
+      reader.onerror = () => reject(new Error('Không thể đọc dữ liệu file.'));
+      reader.readAsDataURL(file);
+    });
+
+  const handleAiParseFallback = async (opts?: {
+    fileBase64?: string;
+    mimeType?: string;
+    fileName?: string;
+  }) => {
+    const hasFile = !!(opts?.fileBase64 && opts?.mimeType);
+    if (!hasFile && !uploadRawText.trim()) {
+      setUploadError(
+        'Cô vui lòng dán nội dung đề thi vào ô bên phải hoặc chọn file Ảnh/PDF trước khi dùng AI tách câu hỏi.'
+      );
+      return;
+    }
+
+    setIsAiParsingUpload(true);
+    setUploadError(null);
+    setUploadInfo(
+      hasFile
+        ? `Đang dùng AI quét và trích xuất câu hỏi từ "${opts?.fileName || 'tài liệu'}"...`
+        : 'Đang dùng AI phân tích văn bản và tự động tách Phần I + Phần II...'
+    );
+
     try {
+      const response = await fetch('/api/gemini/parse-exam-content', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rawText: hasFile ? '' : uploadRawText,
+          fileBase64: opts?.fileBase64 || '',
+          mimeType: opts?.mimeType || '',
+          examTitle: uploadTitle,
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result.success || !result.data) {
+        throw new Error(
+          result.message || 'Không thể kết nối AI tách đề lúc này. Cô thử dùng bộ tách nhanh hoặc Nhập câu hỏi thủ công.'
+        );
+      }
+
+      const data = result.data;
+      const today = new Date().toISOString().split('T')[0];
+
+      const p1: Question[] = (data.part1 || []).map((q: any, idx: number) => ({
+        id: `ai_up_p1_${Date.now()}_${idx + 1}`,
+        grade: 12,
+        topic: 'Lịch sử 12 Ôn thi tốt nghiệp',
+        lesson: 'Đề tách bằng AI',
+        knowledgeDomain: 'Trắc nghiệm kiến thức lịch sử',
+        type: 'Trắc nghiệm đơn',
+        cognitiveLevel: q.cognitiveLevel || 'Thông hiểu',
+        content: q.content || '',
+        options:
+          Array.isArray(q.options) && q.options.length >= 2
+            ? q.options
+            : ['A. Phương án A', 'B. Phương án B', 'C. Phương án C', 'D. Phương án D'],
+        correctAnswer: (q.correctAnswer || 'A').toString().trim().charAt(0).toUpperCase(),
+        explanation: q.explanation || 'AI trích xuất từ tài liệu giáo viên cung cấp.',
+        source: opts?.fileName ? `AI quét từ ${opts.fileName}` : 'AI tách từ văn bản giáo viên',
+        author: 'Cô Cao Thị Thu',
+        updatedAt: today,
+      }));
+
+      const p2: Question[] = (data.part2 || []).map((q: any, idx: number) => {
+        const stmts = (q.trueFalseStatements || []).map((s: any, sIdx: number) => ({
+          id: (s.id || ['a', 'b', 'c', 'd'][sIdx] || 'a').toLowerCase() as 'a' | 'b' | 'c' | 'd',
+          statement: s.statement || '',
+          isCorrect: Boolean(s.isCorrect),
+          explanation: s.explanation || '',
+        }));
+        return {
+          id: `ai_up_p2_${Date.now()}_${idx + 1}`,
+          grade: 12,
+          topic: q.topic || 'Tư liệu lịch sử 12',
+          lesson: 'Đề tách bằng AI',
+          knowledgeDomain: q.knowledgeDomain || 'Trắc nghiệm đúng sai theo năng lực',
+          type: 'Trắc nghiệm đúng sai',
+          cognitiveLevel: 'Thông hiểu',
+          content: q.content || '',
+          trueFalseStatements: stmts,
+          correctAnswer: stmts.map((s: any) => `${s.id}-${s.isCorrect ? 'ĐÚNG' : 'SAI'}`).join(', '),
+          explanation: 'AI trích xuất từ tài liệu giáo viên cung cấp.',
+          source: opts?.fileName ? `AI quét từ ${opts.fileName}` : 'AI tách từ văn bản giáo viên',
+          author: 'Cô Cao Thị Thu',
+          updatedAt: today,
+        };
+      });
+
+      if (p1.length === 0 && p2.length === 0) {
+        throw new Error('AI chưa tìm thấy câu hỏi rõ ràng trong tài liệu này. Cô hãy thử chụp rõ nét hơn hoặc nhập trực tiếp ở tab Nhập câu hỏi.');
+      }
+
+      const newExam: GraduationExamItem = {
+        id: `exam_upload_${Date.now()}`,
+        title: data.examTitle || uploadTitle || 'Đề thi tốt nghiệp (AI tách)',
+        code: `AI-DOC-${Math.floor(100 + Math.random() * 900)}`,
+        source: 'WORD_UPLOAD',
+        createdAt: today,
+        topic: 'Đề thi số hóa thông minh',
+        note: `AI đã tách được ${p1.length} câu Phần I và ${p2.length} câu Phần II.`,
+        part1: p1,
+        part2: p2,
+      };
+
+      setUploadPreviewExam(newExam);
+      setUploadInfo(
+        `AI đã nhận diện thành công ${p1.length} câu Phần I và ${p2.length} câu Phần II. Cô kiểm tra nhanh rồi bấm "Lưu vào Thư viện đề thi" nhé!`
+      );
+    } catch (err: any) {
+      setUploadInfo(null);
+      setUploadError(err?.message || 'Lỗi khi dùng AI tách câu hỏi.');
+    } finally {
+      setIsAiParsingUpload(false);
+    }
+  };
+
+  const handleProcessUploadedFile = async (file: File) => {
+    setUploadFile(file);
+    setUploadError(null);
+    setUploadInfo(null);
+    setIsReadingFile(true);
+
+    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    const baseTitle = file.name.replace(/\.[^/.]+$/, '');
+    setUploadTitle(baseTitle);
+
+    try {
+      // Nếu là PDF hoặc Ảnh chụp đề thi -> chạy luồng AI OCR/PDF trực tiếp
+      if (ext === 'pdf' || ['png', 'jpg', 'jpeg', 'webp'].includes(ext)) {
+        const mimeMap: Record<string, string> = {
+          pdf: 'application/pdf',
+          png: 'image/png',
+          jpg: 'image/jpeg',
+          jpeg: 'image/jpeg',
+          webp: 'image/webp',
+        };
+        const fileBase64 = await readFileAsBase64(file);
+        setIsReadingFile(false);
+        await handleAiParseFallback({
+          fileBase64,
+          mimeType: file.type || mimeMap[ext] || 'application/octet-stream',
+          fileName: file.name,
+        });
+        return;
+      }
+
       const text = await extractTextFromFile(file);
       setUploadRawText(text);
-      setUploadTitle(file.name.replace(/\.[^/.]+$/, ''));
-      processImportedText(text, file.name.replace(/\.[^/.]+$/, ''));
+      const ok = processImportedText(text, baseTitle);
+      if (ok) {
+        setUploadInfo(`Đã đọc và tách thành công câu hỏi từ file "${file.name}".`);
+      }
     } catch (err: any) {
-      alert('Không thể đọc file: ' + err.message);
+      setUploadError(err?.message || 'Không thể đọc được file này.');
     } finally {
       setIsReadingFile(false);
     }
   };
 
-  const processImportedText = (text: string, title: string) => {
+  const handleUploadFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Reset input value so re-selecting the exact same file works cleanly
+    e.target.value = '';
+    if (!file) return;
+    await handleProcessUploadedFile(file);
+  };
+
+  const processImportedText = (text: string, title: string): boolean => {
+    setUploadError(null);
+    if (!text.trim()) {
+      setUploadError('Ô văn bản đang trống. Cô hãy dán nội dung đề thi hoặc bấm "Dán đề mẫu chuẩn" để thử nghiệm.');
+      return false;
+    }
+
     const parsed = parseQuestionsFromText(
       text,
       12,
@@ -499,26 +680,27 @@ Trọng tâm đổi mới là phát triển nền kinh tế hàng hóa nhiều t
       'Cao Thị Thu'
     );
 
+    const today = new Date().toISOString().split('T')[0];
     const p1: Question[] = parsed.questions
       .filter((q) => q.type === 'Trắc nghiệm đơn' || q.type === 'Trắc nghiệm')
       .map((q, idx) => ({
         ...q,
         id: `up_p1_${Date.now()}_${idx + 1}`,
-        updatedAt: new Date().toISOString().split('T')[0],
+        updatedAt: today,
       }));
     const p2: Question[] = parsed.questions
       .filter((q) => q.type === 'Trắc nghiệm đúng sai')
       .map((q, idx) => ({
         ...q,
         id: `up_p2_${Date.now()}_${idx + 1}`,
-        updatedAt: new Date().toISOString().split('T')[0],
+        updatedAt: today,
       }));
 
     if (p1.length === 0 && p2.length === 0) {
-      alert(
-        'Chưa nhận diện được câu hỏi trắc nghiệm nào từ nội dung. Hãy kiểm tra lại theo cú pháp Câu 1: A, B, C, D hoặc a), b), c), d) - Đúng/Sai.'
+      setUploadError(
+        'Bộ tách nhanh chưa nhận diện được câu hỏi theo mẫu chuẩn (Câu 1: ... A. B. C. D. hoặc a) b) c) d) Đúng/Sai). Cô hãy bấm nút "AI Tự động tách câu hỏi" bên dưới để AI tự nhận diện văn bản lộn xộn, hoặc chuyển sang tab "Nhập câu hỏi"!'
       );
-      return;
+      return false;
     }
 
     const newExam: GraduationExamItem = {
@@ -526,7 +708,7 @@ Trọng tâm đổi mới là phát triển nền kinh tế hàng hóa nhiều t
       title: title || 'Đề thi tốt nghiệp tải lên',
       code: `WORD-${Math.floor(100 + Math.random() * 900)}`,
       source: 'WORD_UPLOAD',
-      createdAt: new Date().toISOString().split('T')[0],
+      createdAt: today,
       topic: 'Đề thi nhập từ file giáo viên',
       note: `Tự động tách được ${p1.length} câu trắc nghiệm đơn và ${p2.length} câu trắc nghiệm đúng sai.`,
       part1: p1,
@@ -534,14 +716,423 @@ Trọng tâm đổi mới là phát triển nền kinh tế hàng hóa nhiều t
     };
 
     setUploadPreviewExam(newExam);
+    setUploadInfo(`Đã tách được ${p1.length} câu Phần I và ${p2.length} câu Phần II.`);
+    return true;
+  };
+
+  const handlePasteSampleGraduationText = () => {
+    const sample = `PHẦN I. CÂU TRẮC NGHIỆM NHIỀU PHƯƠNG ÁN LỰA CHỌN
+Câu 1: Tổ chức Liên hợp quốc chính thức được thành lập vào năm nào?
+A. Năm 1945.
+B. Năm 1947.
+C. Năm 1949.
+D. Năm 1954.
+Đáp án: A
+
+Câu 2: Trong Cách mạng tháng Tám năm 1945 ở Việt Nam, địa phương nào giành được chính quyền ở tỉnh lỵ sớm nhất cả nước?
+A. Hà Nội, Huế, Sài Gòn, Hải Phòng.
+B. Bắc Giang, Hải Dương, Hà Tĩnh, Quảng Nam.
+C. Thái Nguyên, Tuyên Quang, Cao Bằng, Lạng Sơn.
+D. Quảng Ninh, Hải Phòng, Nam Định, Thanh Hóa.
+Đáp án: B
+
+PHẦN II. CÂU TRẮC NGHIỆM ĐÚNG SAI
+Câu 1: Đọc đoạn tư liệu sau đây về Chiến dịch Điện Biên Phủ (1954):
+"Với phương châm 'đánh chắc, tiến chắc', quân và dân ta đã chiến đấu suốt 56 ngày đêm, đập tan tập đoàn cứ điểm mạnh nhất Đông Dương của thực dân Pháp ngày 7/5/1954."
+a) Chiến dịch Điện Biên Phủ diễn ra trong vòng 56 ngày đêm năm 1954. - Đúng
+b) Đại tướng Võ Nguyên Giáp quyết định giữ nguyên phương châm "đánh nhanh, thắng nhanh" đến cùng. - Sai
+c) Thắng lợi Điện Biên Phủ tạo điều kiện quyết định buộc Pháp ký Hiệp định Giơ-ne-vơ 1954. - Đúng
+d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp của đế quốc Mỹ vào miền Nam. - Sai`;
+    setUploadRawText(sample);
+    setUploadTitle('Đề ôn thi thử Lịch sử 12 (Mẫu chuẩn)');
+    setUploadError(null);
+    setUploadInfo('Đã dán đề mẫu chuẩn gồm cả Phần I và Phần II. Cô bấm "Phân tích & Tách câu hỏi" để kiểm tra!');
   };
 
   const handleSaveUploadExamToLibrary = () => {
     if (!uploadPreviewExam) return;
-    setExamLibrary((prev) => [uploadPreviewExam, ...prev]);
-    setActiveExamId(uploadPreviewExam.id);
+    const finalizedExam: GraduationExamItem = {
+      ...uploadPreviewExam,
+      title: uploadTitle.trim() || uploadPreviewExam.title,
+    };
+    setExamLibrary((prev) => [finalizedExam, ...prev]);
+    setActiveExamId(finalizedExam.id);
     setActiveTab('grading');
-    alert(`Đã lưu "${uploadPreviewExam.title}" vào Thư viện luyện thi và chuyển sang Phòng chấm điểm!`);
+    setUploadInfo(null);
+  };
+
+  // =========================================================================
+  // MANUAL QUESTION ENTRY & EXAM BUILDER STATE ("NHẬP CÂU HỎI")
+  // =========================================================================
+  const [manualTargetExamId, setManualTargetExamId] = useState<string>('NEW');
+  const [manualTitle, setManualTitle] = useState('Đề luyện thi tốt nghiệp THPT Lịch sử 12 (Cô Thu biên soạn)');
+  const [manualTopic, setManualTopic] = useState('Lịch sử Việt Nam & Thế giới (1945 - nay)');
+  const [manualPart1, setManualPart1] = useState<Question[]>([]);
+  const [manualPart2, setManualPart2] = useState<Question[]>([]);
+  const [manualComposerType, setManualComposerType] = useState<'part1' | 'part2'>('part1');
+  const [editingManualQuestion, setEditingManualQuestion] = useState<{
+    part: 'part1' | 'part2';
+    id: string;
+  } | null>(null);
+  const [manualStatusMsg, setManualStatusMsg] = useState<string | null>(null);
+  const [manualErrorMsg, setManualErrorMsg] = useState<string | null>(null);
+  const [autoSaveToQuestionBank, setAutoSaveToQuestionBank] = useState<boolean>(true);
+
+  // Form states - Part I (Trắc nghiệm 4 chọn 1)
+  const [m1Content, setM1Content] = useState('');
+  const [m1OptA, setM1OptA] = useState('');
+  const [m1OptB, setM1OptB] = useState('');
+  const [m1OptC, setM1OptC] = useState('');
+  const [m1OptD, setM1OptD] = useState('');
+  const [m1Correct, setM1Correct] = useState<'A' | 'B' | 'C' | 'D'>('A');
+  const [m1Level, setM1Level] = useState<'Nhận biết' | 'Thông hiểu' | 'Vận dụng' | 'Vận dụng cao'>('Thông hiểu');
+  const [m1Explanation, setM1Explanation] = useState('');
+
+  // Form states - Part II (Đúng/Sai có ngữ liệu)
+  const [m2Content, setM2Content] = useState('');
+  const [m2Topic, setM2Topic] = useState('Tư liệu lịch sử Việt Nam hiện đại');
+  const [m2Statements, setM2Statements] = useState<
+    { id: 'a' | 'b' | 'c' | 'd'; statement: string; isCorrect: boolean }[]
+  >([
+    { id: 'a', statement: '', isCorrect: true },
+    { id: 'b', statement: '', isCorrect: false },
+    { id: 'c', statement: '', isCorrect: true },
+    { id: 'd', statement: '', isCorrect: false },
+  ]);
+  const [m2Explanation, setM2Explanation] = useState('');
+
+  const resetPart1Composer = () => {
+    setM1Content('');
+    setM1OptA('');
+    setM1OptB('');
+    setM1OptC('');
+    setM1OptD('');
+    setM1Correct('A');
+    setM1Level('Thông hiểu');
+    setM1Explanation('');
+    setEditingManualQuestion(null);
+  };
+
+  const resetPart2Composer = () => {
+    setM2Content('');
+    setM2Statements([
+      { id: 'a', statement: '', isCorrect: true },
+      { id: 'b', statement: '', isCorrect: false },
+      { id: 'c', statement: '', isCorrect: true },
+      { id: 'd', statement: '', isCorrect: false },
+    ]);
+    setM2Explanation('');
+    setEditingManualQuestion(null);
+  };
+
+  const handleLoadExamToManual = (exam: GraduationExamItem, cloneFromMoet = false) => {
+    setManualErrorMsg(null);
+    if (cloneFromMoet || exam.id === defaultMoetExam.id) {
+      setManualTargetExamId('NEW');
+      setManualTitle(`${exam.title} (Bản chỉnh sửa)`);
+    } else {
+      setManualTargetExamId(exam.id);
+      setManualTitle(exam.title);
+    }
+    setManualTopic(exam.topic);
+    setManualPart1(exam.part1.map((q) => ({ ...q })));
+    setManualPart2(exam.part2.map((q) => ({ ...q })));
+    resetPart1Composer();
+    resetPart2Composer();
+    setManualStatusMsg(`Đã mở "${exam.title}" vào trình Nhập & Sửa câu hỏi.`);
+    setActiveTab('manual');
+  };
+
+  const persistManualQuestionsToExamLibrary = (
+    nextPart1: Question[],
+    nextPart2: Question[]
+  ) => {
+    const today = new Date().toISOString().split('T')[0];
+    const isExistingCustom =
+      manualTargetExamId !== 'NEW' &&
+      manualTargetExamId !== defaultMoetExam.id &&
+      examLibrary.some((e) => e.id === manualTargetExamId);
+
+    if (isExistingCustom) {
+      setExamLibrary((prev) =>
+        prev.map((e) =>
+          e.id === manualTargetExamId
+            ? {
+                ...e,
+                title: manualTitle.trim() || e.title,
+                topic: manualTopic.trim() || e.topic,
+                note: `Giáo viên nhập thủ công: ${nextPart1.length} câu Phần I + ${nextPart2.length} câu Phần II.`,
+                part1: nextPart1,
+                part2: nextPart2,
+              }
+            : e
+        )
+      );
+      setActiveExamId(manualTargetExamId);
+      return manualTargetExamId;
+    }
+
+    const newExamId = `exam_manual_${Date.now()}`;
+    const newExam: GraduationExamItem = {
+      id: newExamId,
+      title: manualTitle.trim() || 'Đề ôn thi tốt nghiệp tự soạn',
+      code: `SOẠN-${Math.floor(100 + Math.random() * 900)}`,
+      source: 'CUSTOM',
+      createdAt: today,
+      topic: manualTopic.trim() || 'Lịch sử lớp 12',
+      note: `Giáo viên nhập thủ công: ${nextPart1.length} câu Phần I + ${nextPart2.length} câu Phần II.`,
+      part1: nextPart1,
+      part2: nextPart2,
+    };
+    setExamLibrary((prev) => [newExam, ...prev]);
+    setManualTargetExamId(newExamId);
+    setActiveExamId(newExamId);
+    return newExamId;
+  };
+
+  const handleSubmitManualPart1 = () => {
+    setManualErrorMsg(null);
+    setManualStatusMsg(null);
+
+    if (!m1Content.trim()) {
+      setManualErrorMsg('Cô vui lòng nhập nội dung câu hỏi Phần I trước khi lưu.');
+      return;
+    }
+    if (!m1OptA.trim() || !m1OptB.trim() || !m1OptC.trim() || !m1OptD.trim()) {
+      setManualErrorMsg('Cô vui lòng nhập đầy đủ cả 4 phương án A, B, C, D và chọn đáp án đúng.');
+      return;
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    const cleanOpt = (letter: string, val: string) =>
+      `${letter}. ${val.trim().replace(/^[A-D][.)]\s*/i, '')}`;
+
+    if (editingManualQuestion?.part === 'part1') {
+      const nextPart1 = manualPart1.map((q) =>
+        q.id === editingManualQuestion.id
+          ? {
+              ...q,
+              topic: manualTopic,
+              cognitiveLevel: m1Level,
+              content: m1Content.trim(),
+              options: [
+                cleanOpt('A', m1OptA),
+                cleanOpt('B', m1OptB),
+                cleanOpt('C', m1OptC),
+                cleanOpt('D', m1OptD),
+              ],
+              correctAnswer: m1Correct,
+              explanation: m1Explanation.trim() || q.explanation,
+              updatedAt: today,
+            }
+          : q
+      );
+      setManualPart1(nextPart1);
+      persistManualQuestionsToExamLibrary(nextPart1, manualPart2);
+      setManualStatusMsg(`Đã lưu cập nhật câu hỏi Phần I (Đáp án đúng: ${m1Correct})!`);
+      resetPart1Composer();
+      return;
+    }
+
+    const newQ: Question = {
+      id: `manual_p1_${Date.now()}_${manualPart1.length + 1}`,
+      grade: 12,
+      topic: manualTopic,
+      lesson: `Phần I - Câu ${manualPart1.length + 1}`,
+      knowledgeDomain: m1Level,
+      type: 'Trắc nghiệm đơn',
+      cognitiveLevel: m1Level,
+      content: m1Content.trim(),
+      options: [
+        cleanOpt('A', m1OptA),
+        cleanOpt('B', m1OptB),
+        cleanOpt('C', m1OptC),
+        cleanOpt('D', m1OptD),
+      ],
+      correctAnswer: m1Correct,
+      explanation: m1Explanation.trim() || 'Căn cứ vào SGK Lịch sử 12 GDPT 2018.',
+      source: 'Cô Cao Thị Thu biên soạn thủ công',
+      author: 'Cô Cao Thị Thu',
+      updatedAt: today,
+    };
+
+    const nextPart1 = [...manualPart1, newQ];
+    setManualPart1(nextPart1);
+    persistManualQuestionsToExamLibrary(nextPart1, manualPart2);
+    if (autoSaveToQuestionBank) {
+      const { id: _ignoredId, updatedAt: _ignoredDate, ...bankPayload } = newQ;
+      addQuestion(bankPayload);
+    }
+    setManualStatusMsg(
+      `Đã lưu Câu ${nextPart1.length} (Phần I • Đáp án ${m1Correct}) vào bộ đề${
+        autoSaveToQuestionBank ? ' và Ngân hàng câu hỏi' : ''
+      }!`
+    );
+    resetPart1Composer();
+  };
+
+  const handleSubmitManualPart2 = () => {
+    setManualErrorMsg(null);
+    setManualStatusMsg(null);
+
+    if (!m2Content.trim()) {
+      setManualErrorMsg('Cô vui lòng nhập đoạn trích tư liệu hoặc lời dẫn câu hỏi Phần II.');
+      return;
+    }
+    const filledStmts = m2Statements.filter((s) => s.statement.trim().length > 0);
+    if (filledStmts.length < 4) {
+      setManualErrorMsg('Câu Đúng/Sai chuẩn Bộ GD&ĐT cần nhập đủ cả 4 ý nhận định a), b), c), d).');
+      return;
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    const formattedStatements = m2Statements.map((s) => ({
+      id: s.id,
+      statement: s.statement.trim(),
+      isCorrect: s.isCorrect,
+    }));
+    const answerStr = formattedStatements
+      .map((s) => `${s.id}-${s.isCorrect ? 'ĐÚNG' : 'SAI'}`)
+      .join(', ');
+
+    if (editingManualQuestion?.part === 'part2') {
+      const nextPart2 = manualPart2.map((q) =>
+        q.id === editingManualQuestion.id
+          ? {
+              ...q,
+              topic: m2Topic.trim() || manualTopic,
+              content: m2Content.trim(),
+              trueFalseStatements: formattedStatements,
+              correctAnswer: answerStr,
+              explanation: m2Explanation.trim() || q.explanation,
+              updatedAt: today,
+            }
+          : q
+      );
+      setManualPart2(nextPart2);
+      persistManualQuestionsToExamLibrary(manualPart1, nextPart2);
+      setManualStatusMsg('Đã lưu cập nhật câu hỏi Đúng/Sai Phần II!');
+      resetPart2Composer();
+      return;
+    }
+
+    const newQ: Question = {
+      id: `manual_p2_${Date.now()}_${manualPart2.length + 1}`,
+      grade: 12,
+      topic: m2Topic.trim() || manualTopic,
+      lesson: `Phần II - Câu ${manualPart2.length + 1}`,
+      knowledgeDomain: 'Trắc nghiệm đúng sai theo năng lực',
+      type: 'Trắc nghiệm đúng sai',
+      cognitiveLevel: 'Thông hiểu',
+      content: m2Content.trim(),
+      trueFalseStatements: formattedStatements,
+      correctAnswer: answerStr,
+      explanation: m2Explanation.trim() || 'Đối chiếu với tư liệu lịch sử và kiến thức SGK.',
+      source: 'Cô Cao Thị Thu biên soạn thủ công',
+      author: 'Cô Cao Thị Thu',
+      updatedAt: today,
+    };
+
+    const nextPart2 = [...manualPart2, newQ];
+    setManualPart2(nextPart2);
+    persistManualQuestionsToExamLibrary(manualPart1, nextPart2);
+    if (autoSaveToQuestionBank) {
+      const { id: _ignoredId, updatedAt: _ignoredDate, ...bankPayload } = newQ;
+      addQuestion(bankPayload);
+    }
+    setManualStatusMsg(
+      `Đã lưu Câu ${nextPart2.length} (Phần II Đúng/Sai) vào bộ đề${
+        autoSaveToQuestionBank ? ' và Ngân hàng câu hỏi' : ''
+      }!`
+    );
+    resetPart2Composer();
+  };
+
+  const handleEditManualQuestionItem = (part: 'part1' | 'part2', q: Question) => {
+    setManualErrorMsg(null);
+    setManualStatusMsg(null);
+    setEditingManualQuestion({ part, id: q.id });
+
+    if (part === 'part1') {
+      setManualComposerType('part1');
+      setM1Content(q.content);
+      const stripPrefix = (opt?: string) => (opt || '').replace(/^[A-D][.)]\s*/i, '').trim();
+      setM1OptA(stripPrefix(q.options?.[0]));
+      setM1OptB(stripPrefix(q.options?.[1]));
+      setM1OptC(stripPrefix(q.options?.[2]));
+      setM1OptD(stripPrefix(q.options?.[3]));
+      const ans = (q.correctAnswer || 'A').toUpperCase();
+      setM1Correct((['A', 'B', 'C', 'D'].includes(ans) ? ans : 'A') as 'A' | 'B' | 'C' | 'D');
+      setM1Level((q.cognitiveLevel as any) || 'Thông hiểu');
+      setM1Explanation(q.explanation || '');
+    } else {
+      setManualComposerType('part2');
+      setM2Content(q.content);
+      setM2Topic(q.topic || manualTopic);
+      const stmts = q.trueFalseStatements || [];
+      setM2Statements(
+        (['a', 'b', 'c', 'd'] as const).map((id, idx) => ({
+          id,
+          statement: stmts[idx]?.statement || '',
+          isCorrect: stmts[idx]?.isCorrect ?? (idx % 2 === 0),
+        }))
+      );
+      setM2Explanation(q.explanation || '');
+    }
+  };
+
+  const handleSaveManualExamToLibrary = (alsoImportToBank = false) => {
+    setManualErrorMsg(null);
+    if (manualPart1.length === 0 && manualPart2.length === 0) {
+      setManualErrorMsg('Cô cần nhập ít nhất 1 câu hỏi (Phần I hoặc Phần II) trước khi lưu bộ đề.');
+      return;
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    const isUpdatingExisting =
+      manualTargetExamId !== 'NEW' &&
+      manualTargetExamId !== defaultMoetExam.id &&
+      examLibrary.some((e) => e.id === manualTargetExamId);
+
+    let savedId = manualTargetExamId;
+    if (isUpdatingExisting) {
+      setExamLibrary((prev) =>
+        prev.map((e) =>
+          e.id === manualTargetExamId
+            ? {
+                ...e,
+                title: manualTitle.trim() || e.title,
+                topic: manualTopic.trim() || e.topic,
+                note: `Đã cập nhật: ${manualPart1.length} câu Phần I + ${manualPart2.length} câu Phần II.`,
+                part1: manualPart1,
+                part2: manualPart2,
+              }
+            : e
+        )
+      );
+    } else {
+      savedId = `exam_manual_${Date.now()}`;
+      const newExam: GraduationExamItem = {
+        id: savedId,
+        title: manualTitle.trim() || 'Đề ôn thi tốt nghiệp tự soạn',
+        code: `SOẠN-${Math.floor(100 + Math.random() * 900)}`,
+        source: 'CUSTOM',
+        createdAt: today,
+        topic: manualTopic.trim() || 'Lịch sử lớp 12',
+        note: `Giáo viên nhập trực tiếp: ${manualPart1.length} câu Phần I + ${manualPart2.length} câu Phần II.`,
+        part1: manualPart1,
+        part2: manualPart2,
+      };
+      setExamLibrary((prev) => [newExam, ...prev]);
+    }
+
+    if (alsoImportToBank && onImportToBank) {
+      onImportToBank([...manualPart1, ...manualPart2]);
+    }
+
+    setActiveExamId(savedId);
+    setActiveTab('grading');
+    setManualStatusMsg(null);
   };
 
   // Delete an exam from library (except default MOET)
@@ -670,6 +1261,19 @@ Trọng tâm đổi mới là phát triển nền kinh tế hàng hóa nhiều t
                   <Upload className="w-4 h-4" />
                   Tải lên đề từ Word
                 </button>
+
+                {/* Tab 4: Manual Question Entry ("Nhập câu hỏi thủ công") */}
+                <button
+                  onClick={() => setActiveTab('manual')}
+                  className={`px-3.5 py-2 rounded-xl font-extrabold flex items-center gap-1.5 cursor-pointer transition-all ${
+                    activeTab === 'manual'
+                      ? 'bg-teal-600 text-white shadow-xs'
+                      : 'bg-teal-50 text-teal-800 border border-teal-300 hover:bg-teal-100'
+                  }`}
+                >
+                  <Plus className="w-4 h-4" />
+                  Nhập câu hỏi thủ công
+                </button>
               </>
             )}
 
@@ -766,21 +1370,32 @@ Trọng tâm đổi mới là phát triển nền kinh tế hàng hóa nhiều t
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setActiveTab('ai-studio')}
-                  className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  Soạn đề mới bằng AI
-                </button>
-                <button
-                  onClick={() => setActiveTab('upload')}
-                  className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                  Tải đề từ Word
-                </button>
+              <div className="flex flex-wrap items-center gap-2">
+                {userRole !== 'student' && (
+                  <>
+                    <button
+                      onClick={() => setActiveTab('manual')}
+                      className="px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Nhập câu hỏi thủ công
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('ai-studio')}
+                      className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      Soạn đề bằng AI
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('upload')}
+                      className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      Tải đề từ Word
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 
@@ -847,6 +1462,16 @@ Trọng tâm đổi mới là phát triển nền kinh tế hàng hóa nhiều t
                       </div>
 
                       <div className="flex items-center gap-1.5">
+                        {userRole !== 'student' && (
+                          <button
+                            onClick={() => handleLoadExamToManual(item)}
+                            className="px-2.5 py-1 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 rounded-lg font-bold text-[11px] cursor-pointer flex items-center gap-1"
+                            title="Mở bộ đề này để thêm hoặc chỉnh sửa từng câu hỏi"
+                          >
+                            <Edit3 className="w-3 h-3" />
+                            Sửa / Thêm câu
+                          </button>
+                        )}
                         <button
                           onClick={() => handleSelectExam(item.id, 'exam')}
                           className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold text-[11px] cursor-pointer"
@@ -1145,38 +1770,133 @@ Trọng tâm đổi mới là phát triển nền kinh tế hàng hóa nhiều t
         )}
 
         {/* =========================================================================
-            TAB 3: UPLOAD FROM WORD OR RAW TEXT
+            TAB 3: UPLOAD FROM WORD OR RAW TEXT / PDF / IMAGE FALLBACKS
            ========================================================================= */}
         {activeTab === 'upload' && (
           <div className="space-y-4">
-            <div className="p-4 bg-indigo-50/80 rounded-2xl border border-indigo-200 space-y-1.5">
-              <h4 className="font-bold text-indigo-900 text-sm flex items-center gap-2">
-                <Upload className="w-4 h-4 text-indigo-700" />
-                Tải lên đề thi tốt nghiệp từ file Word (.docx) hoặc dán toàn bộ văn bản đề thi
-              </h4>
-              <p className="text-slate-600 text-xs leading-relaxed">
-                Hệ thống tự động phân loại các câu hỏi dạng <strong>Trắc nghiệm 1 đáp án (Phần I)</strong> và dạng <strong>Trắc nghiệm Đúng/Sai có ngữ liệu (Phần II)</strong> để đưa vào phòng chấm điểm tự động.
-              </p>
+            <div className="p-4 bg-indigo-50/80 rounded-2xl border border-indigo-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-1">
+                <h4 className="font-bold text-indigo-900 text-sm flex items-center gap-2">
+                  <Upload className="w-4 h-4 text-indigo-700" />
+                  Tải lên đề thi từ Word (.docx/.doc), PDF, Ảnh chụp hoặc Dán văn bản
+                </h4>
+                <p className="text-slate-600 text-xs leading-relaxed">
+                  Hệ thống tự động tách câu hỏi <strong>Phần I (4 chọn 1)</strong> và <strong>Phần II (Đúng/Sai tư liệu)</strong>. Nếu máy tính/điện thoại không tải được file Word, cô có thể dán trực tiếp văn bản, tải ảnh chụp đề, hoặc bấm <strong>Nhập câu hỏi</strong> từng câu.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={downloadWordTemplate}
+                  className="px-3 py-2 bg-white hover:bg-slate-100 text-indigo-800 border border-indigo-200 rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Tải file Word mẫu
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('manual')}
+                  className="px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Nhập câu hỏi thủ công
+                </button>
+              </div>
             </div>
 
+            {/* Inline Error & Instant Fallback Guidance */}
+            {uploadError && (
+              <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-rose-900 space-y-2.5">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <div className="text-xs whitespace-pre-line leading-relaxed font-medium">
+                    {uploadError}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 pl-6">
+                  <button
+                    type="button"
+                    onClick={() => uploadTextareaRef.current?.focus()}
+                    className="px-3 py-1.5 bg-white hover:bg-rose-100 text-rose-900 border border-rose-300 rounded-lg font-bold text-[11px] flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <ClipboardPaste className="w-3.5 h-3.5" />
+                    Chuyển sang Copy & Dán văn bản
+                  </button>
+                  {uploadRawText.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => handleAiParseFallback()}
+                      disabled={isAiParsingUpload}
+                      className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold text-[11px] flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+                    >
+                      <Wand2 className="w-3.5 h-3.5" />
+                      AI Tự động tách từ văn bản đã dán
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('manual')}
+                    className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-bold text-[11px] flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Mở form Nhập câu hỏi trực tiếp
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Status / Success Banner */}
+            {uploadInfo && !uploadError && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-900 text-xs font-semibold flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{uploadInfo}</span>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* File upload box */}
-              <div className="p-5 bg-white rounded-2xl border-2 border-dashed border-indigo-200 hover:border-indigo-400 transition-colors flex flex-col items-center justify-center text-center space-y-3">
+              {/* File upload box with Drag & Drop + PDF/Image support */}
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDraggingUpload(true);
+                }}
+                onDragLeave={() => setIsDraggingUpload(false)}
+                onDrop={async (e) => {
+                  e.preventDefault();
+                  setIsDraggingUpload(false);
+                  const droppedFile = e.dataTransfer.files?.[0];
+                  if (droppedFile) {
+                    await handleProcessUploadedFile(droppedFile);
+                  }
+                }}
+                className={`p-5 bg-white rounded-2xl border-2 border-dashed transition-colors flex flex-col items-center justify-center text-center space-y-3 ${
+                  isDraggingUpload
+                    ? 'border-indigo-500 bg-indigo-50/40'
+                    : 'border-indigo-200 hover:border-indigo-400'
+                }`}
+              >
                 <div className="w-12 h-12 rounded-2xl bg-indigo-100 text-indigo-700 flex items-center justify-center">
-                  <Upload className="w-6 h-6" />
+                  {isReadingFile || isAiParsingUpload ? (
+                    <RefreshCw className="w-6 h-6 animate-spin" />
+                  ) : (
+                    <Upload className="w-6 h-6" />
+                  )}
                 </div>
                 <div>
-                  <h5 className="font-bold text-slate-800 text-xs">Chọn file Word (.docx, .doc)</h5>
-                  <p className="text-slate-500 text-[11px] mt-0.5">
-                    Hỗ trợ file soạn sẵn của cô hoặc tải file mẫu để xem cú pháp
+                  <h5 className="font-bold text-slate-800 text-xs">
+                    Kéo thả hoặc chọn file Word (.docx, .doc), PDF hoặc Ảnh đề thi
+                  </h5>
+                  <p className="text-slate-500 text-[11px] mt-1 leading-relaxed">
+                    Hỗ trợ <strong>.docx, .doc (HTML), .txt, .rtf</strong> và nhận diện thông minh <strong>.pdf, .jpg, .png</strong> qua AI.
                   </p>
                 </div>
 
-                <label className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs cursor-pointer shadow-xs transition-colors">
-                  Chọn file từ máy tính
+                <label className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs cursor-pointer shadow-xs transition-colors flex items-center gap-1.5">
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>{isReadingFile ? 'Đang đọc file...' : 'Chọn file từ máy tính / điện thoại'}</span>
                   <input
                     type="file"
-                    accept=".docx,.doc,.txt"
+                    accept=".docx,.doc,.txt,.rtf,.html,.htm,.pdf,.png,.jpg,.jpeg,.webp"
                     onChange={handleUploadFileChange}
                     className="hidden"
                   />
@@ -1187,50 +1907,128 @@ Trọng tâm đổi mới là phát triển nền kinh tế hàng hóa nhiều t
                     ✓ Đã chọn: {uploadFile.name}
                   </div>
                 )}
+
+                <div className="w-full pt-2 border-t border-slate-100 text-left space-y-1.5">
+                  <div className="text-[11px] font-bold text-slate-700">
+                    Phương án dự phòng nếu không tải được file Word:
+                  </div>
+                  <ul className="text-[11px] text-slate-600 space-y-1 list-disc pl-4">
+                    <li>
+                      <strong>File .doc đời cũ (97–2003):</strong> Mở Word → nhấn <kbd className="px-1 bg-slate-100 border border-slate-300 rounded">Ctrl+A</kbd> → <kbd className="px-1 bg-slate-100 border border-slate-300 rounded">Ctrl+C</kbd> và dán vào ô bên phải.
+                    </li>
+                    <li>
+                      <strong>Chỉ có đề giấy / PDF / Zalo:</strong> Chụp ảnh đề thi hoặc chọn file PDF ở nút trên để AI tự bóc tách.
+                    </li>
+                    <li>
+                      <strong>Muốn soạn nhanh không cần file:</strong> Bấm tab <button type="button" onClick={() => setActiveTab('manual')} className="text-teal-700 font-bold underline cursor-pointer">Nhập câu hỏi</button> để gõ từng câu.
+                    </li>
+                  </ul>
+                </div>
               </div>
 
-              {/* Paste Text Box */}
-              <div className="p-4 bg-white rounded-2xl border border-slate-200 space-y-2 flex flex-col">
-                <label className="text-xs font-bold text-slate-700">
-                  Hoặc dán toàn bộ văn bản đề thi vào đây:
-                </label>
+              {/* Paste Text Box + AI Smart Extract Fallback (Phương án 1) */}
+              <div className="p-4 bg-white rounded-2xl border border-indigo-200 space-y-2.5 flex flex-col">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label className="text-xs font-bold text-indigo-950 flex items-center gap-1.5">
+                    <ClipboardPaste className="w-3.5 h-3.5 text-indigo-600" />
+                    Phương án 1 (Khi Word lỗi): Copy & Dán toàn bộ văn bản đề thi
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handlePasteSampleGraduationText}
+                      className="text-[11px] font-bold text-indigo-700 hover:underline cursor-pointer"
+                    >
+                      + Dán đề mẫu chuẩn
+                    </button>
+                    {uploadRawText && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUploadRawText('');
+                          setUploadError(null);
+                          setUploadInfo(null);
+                        }}
+                        className="text-[11px] text-slate-400 hover:text-rose-600 cursor-pointer"
+                      >
+                        Xóa trắng
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <input
+                    type="text"
+                    value={uploadTitle}
+                    onChange={(e) => setUploadTitle(e.target.value)}
+                    placeholder="Tên bộ đề thi..."
+                    className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+
                 <textarea
+                  ref={uploadTextareaRef}
                   value={uploadRawText}
                   onChange={(e) => setUploadRawText(e.target.value)}
                   rows={8}
                   className="w-full flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-serif leading-relaxed focus:ring-2 focus:ring-indigo-500 outline-none"
-                  placeholder="Dán đề thi gồm Câu 1: ... A, B, C, D... và Phần II: Câu 1 ... a), b), c), d) - Đúng/Sai..."
+                  placeholder="Dán nội dung đề thi từ Word / PDF / Zalo vào đây... Hỗ trợ cả bảng đáp án ở cuối đề và các phương án xếp ngang (A. ... B. ... C. ... D. ...)."
                 />
-                <button
-                  type="button"
-                  onClick={() => processImportedText(uploadRawText, uploadTitle)}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs cursor-pointer shadow-xs transition-colors self-end"
-                >
-                  Phân tích & Tách câu hỏi
-                </button>
+
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleAiParseFallback()}
+                    disabled={isAiParsingUpload}
+                    className="px-3.5 py-2 bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-300 rounded-xl font-bold text-xs cursor-pointer transition-colors flex items-center gap-1.5 disabled:opacity-60"
+                    title="Dùng AI tự tách nếu văn bản bị mất định dạng hoặc lộn xộn"
+                  >
+                    <Wand2 className="w-3.5 h-3.5 text-purple-600" />
+                    {isAiParsingUpload ? 'AI đang tách...' : 'AI Tự động tách câu hỏi'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => processImportedText(uploadRawText, uploadTitle)}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs cursor-pointer shadow-xs transition-colors"
+                  >
+                    Phân tích & Tách câu hỏi
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Uploaded Preview */}
+            {/* Uploaded Preview with Edit / Delete / Quick Key Fix */}
             {uploadPreviewExam && (
               <div className="p-4 bg-white rounded-2xl border border-slate-200 space-y-3">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-200">
                   <div>
                     <h5 className="font-bold text-slate-900 text-xs">
-                      {uploadPreviewExam.title}
+                      {uploadTitle || uploadPreviewExam.title}
                     </h5>
                     <p className="text-[11px] text-slate-500">{uploadPreviewExam.note}</p>
                   </div>
-                  <button
-                    onClick={handleSaveUploadExamToLibrary}
-                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
-                  >
-                    <Save className="w-3.5 h-3.5" />
-                    Lưu vào Thư viện đề thi
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleLoadExamToManual({ ...uploadPreviewExam, title: uploadTitle }, false)}
+                      className="px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      Chỉnh sửa / Nhập thêm câu
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveUploadExamToLibrary}
+                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      Lưu vào Thư viện đề thi
+                    </button>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                   <div className="p-3 bg-sky-50 rounded-xl border border-sky-200">
                     <span className="font-bold text-[#073B66]">
                       Phần I (Trắc nghiệm đơn): {uploadPreviewExam.part1.length} câu
@@ -1242,8 +2040,659 @@ Trọng tâm đổi mới là phát triển nền kinh tế hàng hóa nhiều t
                     </span>
                   </div>
                 </div>
+
+                {/* Compact list of parsed questions for fast verification */}
+                <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+                  {uploadPreviewExam.part1.map((q, idx) => (
+                    <div
+                      key={q.id}
+                      className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <span className="font-bold text-[#0878C9]">Phần I - Câu {idx + 1}:</span>{' '}
+                        <span className="text-slate-800 font-serif">{q.content}</span>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {(['A', 'B', 'C', 'D'] as const).map((letter) => (
+                          <button
+                            key={letter}
+                            type="button"
+                            onClick={() =>
+                              setUploadPreviewExam((prev) =>
+                                prev
+                                  ? {
+                                      ...prev,
+                                      part1: prev.part1.map((item) =>
+                                        item.id === q.id ? { ...item, correctAnswer: letter } : item
+                                      ),
+                                    }
+                                  : prev
+                              )
+                            }
+                            className={`w-7 h-7 rounded-lg font-bold text-[11px] cursor-pointer ${
+                              q.correctAnswer === letter
+                                ? 'bg-emerald-600 text-white'
+                                : 'bg-white border border-slate-300 text-slate-600 hover:bg-slate-100'
+                            }`}
+                          >
+                            {letter}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setUploadPreviewExam((prev) =>
+                              prev
+                                ? { ...prev, part1: prev.part1.filter((item) => item.id !== q.id) }
+                                : prev
+                            )
+                          }
+                          className="p-1.5 text-slate-400 hover:text-rose-600 cursor-pointer"
+                          title="Xóa câu này"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {uploadPreviewExam.part2.map((q, idx) => (
+                    <div
+                      key={q.id}
+                      className="p-2.5 bg-purple-50/40 rounded-xl border border-purple-200 flex items-start justify-between gap-2"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <span className="font-bold text-purple-800">Phần II - Câu {idx + 1}:</span>{' '}
+                        <span className="text-slate-800 font-serif line-clamp-2">{q.content}</span>
+                        <div className="text-[11px] text-purple-700 font-semibold mt-0.5">
+                          Đáp án: {q.correctAnswer}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setUploadPreviewExam((prev) =>
+                            prev
+                              ? { ...prev, part2: prev.part2.filter((item) => item.id !== q.id) }
+                              : prev
+                          )
+                        }
+                        className="p-1.5 text-slate-400 hover:text-rose-600 cursor-pointer shrink-0"
+                        title="Xóa câu này"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* =========================================================================
+            TAB 3B: MANUAL QUESTION ENTRY & EXAM COMPOSER ("NHẬP CÂU HỎI")
+           ========================================================================= */}
+        {activeTab === 'manual' && userRole !== 'student' && (
+          <div className="space-y-4">
+            {/* Header & Exam Metadata */}
+            <div className="p-4 bg-teal-50/80 rounded-2xl border border-teal-200 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h4 className="font-bold text-teal-950 text-sm flex items-center gap-2">
+                    <Edit3 className="w-4 h-4 text-teal-700" />
+                    Nhập Câu Hỏi Trực Tiếp & Biên Soạn Bộ Đề Ôn Thi Tốt Nghiệp (Không Cần File Word)
+                  </h4>
+                  <p className="text-slate-600 text-xs mt-0.5">
+                    Cô nhập từng câu Phần I (4 chọn 1) hoặc Phần II (Đúng/Sai có tư liệu) vào bản nháp bên dưới, sau đó bấm lưu thẳng vào Thư viện & Ngân hàng câu hỏi.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <select
+                    value={manualTargetExamId}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === 'NEW') {
+                        setManualTargetExamId('NEW');
+                        setManualTitle('Đề luyện thi tốt nghiệp THPT Lịch sử 12 (Cô Thu biên soạn)');
+                        setManualPart1([]);
+                        setManualPart2([]);
+                      } else {
+                        const found = examLibrary.find((ex) => ex.id === val);
+                        if (found) handleLoadExamToManual(found);
+                      }
+                    }}
+                    className="px-3 py-2 bg-white border border-teal-300 rounded-xl text-xs font-bold text-teal-900 cursor-pointer"
+                  >
+                    <option value="NEW">+ Tạo bộ đề thi mới hoàn toàn</option>
+                    {examLibrary.map((ex) => (
+                      <option key={ex.id} value={ex.id}>
+                        {ex.id === defaultMoetExam.id
+                          ? `Nhân bản để sửa: ${ex.code}`
+                          : `Chỉnh sửa / Thêm câu: ${ex.title.slice(0, 38)}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Tên bộ đề thi:
+                  </label>
+                  <input
+                    type="text"
+                    value={manualTitle}
+                    onChange={(e) => setManualTitle(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-teal-200 rounded-xl text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-teal-500"
+                    placeholder="Ví dụ: Đề ôn tập Chuyên đề Cách mạng tháng Tám - Lớp 12"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Chủ đề / Phạm vi kiến thức:
+                  </label>
+                  <input
+                    type="text"
+                    value={manualTopic}
+                    onChange={(e) => setManualTopic(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-teal-200 rounded-xl text-xs text-slate-800 outline-none focus:ring-2 focus:ring-teal-500"
+                    placeholder="Ví dụ: Lịch sử Việt Nam từ 1945 đến nay"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {manualErrorMsg && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs font-semibold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{manualErrorMsg}</span>
+              </div>
+            )}
+
+            {manualStatusMsg && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-semibold flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{manualStatusMsg}</span>
+              </div>
+            )}
+
+            {/* Two-Column Workspace: Left = Question Form, Right = Draft Questions List */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+              {/* LEFT: Composer Form */}
+              <div className="lg:col-span-7 p-4 bg-white rounded-2xl border border-slate-200 space-y-3.5">
+                {/* Switch Phần I / Phần II */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-200">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setManualComposerType('part1');
+                        setManualErrorMsg(null);
+                      }}
+                      className={`px-3.5 py-2 rounded-xl font-bold text-xs cursor-pointer transition-all ${
+                        manualComposerType === 'part1'
+                          ? 'bg-[#073B66] text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      Phần I: Trắc nghiệm 4 chọn 1
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setManualComposerType('part2');
+                        setManualErrorMsg(null);
+                      }}
+                      className={`px-3.5 py-2 rounded-xl font-bold text-xs cursor-pointer transition-all ${
+                        manualComposerType === 'part2'
+                          ? 'bg-purple-700 text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      Phần II: Đúng / Sai tư liệu
+                    </button>
+                  </div>
+
+                  {editingManualQuestion && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        resetPart1Composer();
+                        resetPart2Composer();
+                      }}
+                      className="text-[11px] font-bold text-rose-600 hover:underline cursor-pointer"
+                    >
+                      Hủy chế độ sửa câu
+                    </button>
+                  )}
+                </div>
+
+                {/* COMPOSER PART 1 */}
+                {manualComposerType === 'part1' ? (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Nội dung câu hỏi (Phần I):
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={m1Content}
+                        onChange={(e) => setM1Content(e.target.value)}
+                        placeholder="Ví dụ: Hội nghị I-an-ta (tháng 2/1945) được triệu tập với sự tham dự của nguyên thủ ba cường quốc nào?"
+                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-serif leading-relaxed outline-none focus:ring-2 focus:ring-[#0878C9] focus:bg-white"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-700">
+                          Nhập 4 phương án A, B, C, D:
+                        </span>
+                        <span className="text-[11px] font-bold text-emerald-700">
+                          Đáp án đang chọn: {m1Correct}
+                        </span>
+                      </div>
+
+                      {(
+                        [
+                          { key: 'A', val: m1OptA, setter: setM1OptA },
+                          { key: 'B', val: m1OptB, setter: setM1OptB },
+                          { key: 'C', val: m1OptC, setter: setM1OptC },
+                          { key: 'D', val: m1OptD, setter: setM1OptD },
+                        ] as const
+                      ).map((opt) => {
+                        const isRight = m1Correct === opt.key;
+                        return (
+                          <div
+                            key={opt.key}
+                            className={`flex items-center gap-2 p-2 rounded-xl border transition-all ${
+                              isRight
+                                ? 'bg-emerald-50 border-emerald-400'
+                                : 'bg-slate-50 border-slate-200'
+                            }`}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => setM1Correct(opt.key)}
+                              className={`w-9 h-9 rounded-lg font-black text-xs shrink-0 cursor-pointer transition-colors ${
+                                isRight
+                                  ? 'bg-emerald-600 text-white shadow-xs'
+                                  : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-100'
+                              }`}
+                              title={`Đặt ${opt.key} làm đáp án đúng`}
+                            >
+                              {opt.key}
+                            </button>
+                            <input
+                              type="text"
+                              value={opt.val}
+                              onChange={(e) => opt.setter(e.target.value)}
+                              placeholder={`Nhập nội dung phương án ${opt.key}...`}
+                              className="flex-1 bg-transparent border-none outline-none text-xs font-serif text-slate-900"
+                            />
+                            {isRight && (
+                              <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded shrink-0">
+                                Đáp án đúng
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+
+                      {/* Explicit Answer Selector Bar */}
+                      <div className="p-3 bg-emerald-50/70 rounded-xl border border-emerald-200 flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+                          <CheckSquare className="w-4 h-4 text-emerald-700" />
+                          Chọn đáp án đúng cho câu hỏi này (*):
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          {(['A', 'B', 'C', 'D'] as const).map((letter) => (
+                            <button
+                              key={letter}
+                              type="button"
+                              onClick={() => setM1Correct(letter)}
+                              className={`px-3.5 py-2 rounded-xl font-black text-xs cursor-pointer transition-all ${
+                                m1Correct === letter
+                                  ? 'bg-emerald-600 text-white shadow-xs ring-2 ring-emerald-300'
+                                  : 'bg-white text-slate-700 border border-slate-300 hover:bg-emerald-100'
+                              }`}
+                            >
+                              Đáp án {letter}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                          Mức độ nhận thức:
+                        </label>
+                        <select
+                          value={m1Level}
+                          onChange={(e) => setM1Level(e.target.value as any)}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800"
+                        >
+                          <option value="Nhận biết">Nhận biết</option>
+                          <option value="Thông hiểu">Thông hiểu</option>
+                          <option value="Vận dụng">Vận dụng</option>
+                          <option value="Vận dụng cao">Vận dụng cao</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                          Giải thích đáp án (tùy chọn):
+                        </label>
+                        <input
+                          type="text"
+                          value={m1Explanation}
+                          onChange={(e) => setM1Explanation(e.target.value)}
+                          placeholder="Gợi ý giải thích ngắn gọn..."
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                      <label className="flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={autoSaveToQuestionBank}
+                          onChange={(e) => setAutoSaveToQuestionBank(e.target.checked)}
+                          className="w-4 h-4 accent-teal-600 rounded cursor-pointer"
+                        />
+                        <span>Đồng thời lưu vào Ngân hàng câu hỏi</span>
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={handleSubmitManualPart1}
+                        className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-extrabold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                      >
+                        <Save className="w-4 h-4" />
+                        {editingManualQuestion?.part === 'part1'
+                          ? 'Lưu cập nhật câu hỏi'
+                          : 'Lưu câu hỏi'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* COMPOSER PART 2 */
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Đoạn trích tư liệu / Lời dẫn câu hỏi (Phần II):
+                      </label>
+                      <textarea
+                        rows={4}
+                        value={m2Content}
+                        onChange={(e) => setM2Content(e.target.value)}
+                        placeholder='Ví dụ: Đọc đoạn trích sau trong Tuyên ngôn Độc lập (2/9/1945): "Nước Việt Nam có quyền hưởng tự do và độc lập..."'
+                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-serif leading-relaxed outline-none focus:ring-2 focus:ring-purple-500 focus:bg-white"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="p-3 bg-purple-50/80 rounded-xl border border-purple-200 flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-xs font-bold text-purple-950 flex items-center gap-1.5">
+                          <CheckSquare className="w-4 h-4 text-purple-700" />
+                          Chọn đáp án Đúng / Sai cho 4 ý nhận định a, b, c, d (*):
+                        </span>
+                        <span className="text-[11px] font-bold text-purple-800">
+                          Đáp án đang chọn:{' '}
+                          {m2Statements.map((s) => `${s.id}-${s.isCorrect ? 'Đúng' : 'Sai'}`).join(', ')}
+                        </span>
+                      </div>
+                      {m2Statements.map((stmt, idx) => (
+                        <div
+                          key={stmt.id}
+                          className="p-2 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center gap-2"
+                        >
+                          <div className="flex items-center gap-2 flex-1">
+                            <span className="w-7 h-7 rounded-lg bg-purple-100 text-purple-900 font-black text-xs flex items-center justify-center shrink-0">
+                              {stmt.id})
+                            </span>
+                            <input
+                              type="text"
+                              value={stmt.statement}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setM2Statements((prev) =>
+                                  prev.map((item, i) => (i === idx ? { ...item, statement: val } : item))
+                                );
+                              }}
+                              placeholder={`Nhập nhận định ${stmt.id}...`}
+                              className="flex-1 bg-transparent border-none outline-none text-xs font-serif text-slate-900"
+                            />
+                          </div>
+
+                          <div className="flex items-center gap-1 shrink-0 self-end sm:self-center">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setM2Statements((prev) =>
+                                  prev.map((item, i) => (i === idx ? { ...item, isCorrect: true } : item))
+                                )
+                              }
+                              className={`px-3 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer ${
+                                stmt.isCorrect
+                                  ? 'bg-emerald-600 text-white'
+                                  : 'bg-white border border-slate-300 text-slate-600 hover:bg-emerald-50'
+                              }`}
+                            >
+                              Đúng
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setM2Statements((prev) =>
+                                  prev.map((item, i) => (i === idx ? { ...item, isCorrect: false } : item))
+                                )
+                              }
+                              className={`px-3 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer ${
+                                !stmt.isCorrect
+                                  ? 'bg-rose-600 text-white'
+                                  : 'bg-white border border-slate-300 text-slate-600 hover:bg-rose-50'
+                              }`}
+                            >
+                              Sai
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                          Chủ đề tư liệu:
+                        </label>
+                        <input
+                          type="text"
+                          value={m2Topic}
+                          onChange={(e) => setM2Topic(e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                          Giải thích chung (tùy chọn):
+                        </label>
+                        <input
+                          type="text"
+                          value={m2Explanation}
+                          onChange={(e) => setM2Explanation(e.target.value)}
+                          placeholder="Ghi chú căn cứ SGK..."
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                      <label className="flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={autoSaveToQuestionBank}
+                          onChange={(e) => setAutoSaveToQuestionBank(e.target.checked)}
+                          className="w-4 h-4 accent-purple-600 rounded cursor-pointer"
+                        />
+                        <span>Đồng thời lưu vào Ngân hàng câu hỏi</span>
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={handleSubmitManualPart2}
+                        className="px-5 py-2.5 bg-purple-700 hover:bg-purple-800 text-white rounded-xl font-extrabold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                      >
+                        <Save className="w-4 h-4" />
+                        {editingManualQuestion?.part === 'part2'
+                          ? 'Lưu cập nhật câu hỏi'
+                          : 'Lưu câu hỏi'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* RIGHT: Live Draft List & Save Actions */}
+              <div className="lg:col-span-5 p-4 bg-white rounded-2xl border border-slate-200 flex flex-col justify-between space-y-3">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                    <div>
+                      <h5 className="font-bold text-slate-900 text-xs">
+                        Danh sách câu hỏi đã lưu ({manualPart1.length + manualPart2.length} câu)
+                      </h5>
+                      <p className="text-[11px] text-slate-500">
+                        Phần I: {manualPart1.length} câu ({(manualPart1.length * 0.25).toFixed(2)}đ) • Phần II: {manualPart2.length} câu ({(manualPart2.length * 1.0).toFixed(1)}đ)
+                      </p>
+                    </div>
+                  </div>
+
+                  {manualPart1.length === 0 && manualPart2.length === 0 ? (
+                    <div className="p-6 text-center bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-500 space-y-1.5">
+                      <BookOpen className="w-7 h-7 text-slate-300 mx-auto" />
+                      <p className="text-xs font-medium">
+                        Chưa có câu hỏi nào. Cô nhập câu hỏi và chọn đáp án ở khung bên trái, sau đó bấm nút <strong>Lưu câu hỏi</strong> nhé!
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="max-h-96 overflow-y-auto space-y-2 pr-1">
+                      {manualPart1.map((q, idx) => (
+                        <div
+                          key={q.id}
+                          className="p-2.5 bg-sky-50/50 rounded-xl border border-sky-200 flex items-start justify-between gap-2"
+                        >
+                          <div className="flex-1 min-w-0 space-y-0.5">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="font-bold text-[#073B66] text-[11px]">
+                                Phần I - Câu {idx + 1}
+                              </span>
+                              <span className="bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold text-[10px]">
+                                Đáp án: {q.correctAnswer}
+                              </span>
+                              <span className="bg-teal-100 text-teal-800 px-1.5 py-0.5 rounded font-semibold text-[10px]">
+                                ✓ Đã lưu
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-800 font-serif line-clamp-2">{q.content}</p>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleEditManualQuestionItem('part1', q)}
+                              className="p-1.5 text-slate-500 hover:text-sky-700 hover:bg-white rounded-lg cursor-pointer"
+                              title="Sửa câu này"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const nextP1 = manualPart1.filter((item) => item.id !== q.id);
+                                setManualPart1(nextP1);
+                                persistManualQuestionsToExamLibrary(nextP1, manualPart2);
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-white rounded-lg cursor-pointer"
+                              title="Xóa câu này"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+
+                      {manualPart2.map((q, idx) => (
+                        <div
+                          key={q.id}
+                          className="p-2.5 bg-purple-50/50 rounded-xl border border-purple-200 flex items-start justify-between gap-2"
+                        >
+                          <div className="flex-1 min-w-0 space-y-0.5">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="font-bold text-purple-900 text-[11px]">
+                                Phần II - Câu {idx + 1}
+                              </span>
+                              <span className="bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded font-bold text-[10px]">
+                                {q.correctAnswer}
+                              </span>
+                              <span className="bg-teal-100 text-teal-800 px-1.5 py-0.5 rounded font-semibold text-[10px]">
+                                ✓ Đã lưu
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-800 font-serif line-clamp-2">{q.content}</p>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleEditManualQuestionItem('part2', q)}
+                              className="p-1.5 text-slate-500 hover:text-purple-800 hover:bg-white rounded-lg cursor-pointer"
+                              title="Sửa câu này"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const nextP2 = manualPart2.filter((item) => item.id !== q.id);
+                                setManualPart2(nextP2);
+                                persistManualQuestionsToExamLibrary(manualPart1, nextP2);
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-white rounded-lg cursor-pointer"
+                              title="Xóa câu này"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-3 border-t border-slate-200 space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => handleSaveManualExamToLibrary(false)}
+                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                  >
+                    <Save className="w-4 h-4" />
+                    Lưu bộ đề vào Thư viện & Mở Chấm điểm
+                  </button>
+                  {onImportToBank && (
+                    <button
+                      type="button"
+                      onClick={() => handleSaveManualExamToLibrary(true)}
+                      className="w-full py-2 bg-sky-50 hover:bg-sky-100 text-sky-900 border border-sky-200 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Layers className="w-3.5 h-3.5" />
+                      Lưu bộ đề & Đồng bộ vào Ngân hàng câu hỏi
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         )}
 

@@ -106,6 +106,7 @@ export const RoomImportWordModal: React.FC<RoomImportWordModalProps> = ({
   // File Upload State
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isLoadingFile, setIsLoadingFile] = useState<boolean>(false);
+  const [fileReadError, setFileReadError] = useState<string | null>(null);
 
   // Paste Text State
   const [pastedText, setPastedText] = useState<string>('');
@@ -126,10 +127,12 @@ export const RoomImportWordModal: React.FC<RoomImportWordModalProps> = ({
   // Handle file select
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
 
     setSelectedFile(file);
     setIsLoadingFile(true);
+    setFileReadError(null);
     setParseErrors([]);
 
     try {
@@ -148,9 +151,13 @@ export const RoomImportWordModal: React.FC<RoomImportWordModalProps> = ({
       setParsedQuestions(converted);
       setParseErrors(res.errors);
       setSavedStatusMap({});
-      showToast(`Đã nhận diện thành công ${converted.length} câu hỏi cho Khối ${selectedGrade} từ file Word!`);
+      if (converted.length > 0) {
+        showToast(`Đã nhận diện thành công ${converted.length} câu hỏi cho Khối ${selectedGrade} từ file Word!`);
+      } else {
+        setFileReadError('Đã đọc file nhưng chưa tách được câu hỏi đúng mẫu. Cô chuyển sang tab "Copy & Dán văn bản" để chỉnh nhanh hoặc bấm "Nhập câu hỏi thủ công".');
+      }
     } catch (err: any) {
-      alert('Không thể đọc file Word: ' + (err.message || 'Lỗi không xác định'));
+      setFileReadError(err.message || 'Không thể đọc file Word này.');
     } finally {
       setIsLoadingFile(false);
     }
@@ -474,10 +481,10 @@ d) Người phụ nữ duy nhất ký vào bản Hiệp định Paris 1973 là b
               type="button"
               onClick={handleAddManualSingleQuestion}
               className="px-3 py-1.5 bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1"
-              title="Soạn thêm 1 câu mẫu trực tiếp"
+              title="Nhập câu hỏi thủ công, chọn đáp án và lưu câu hỏi trực tiếp"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>Thêm 1 câu nhanh</span>
+              <span>Nhập câu hỏi thủ công</span>
             </button>
           </div>
         </div>
@@ -569,7 +576,7 @@ d) Người phụ nữ duy nhất ký vào bản Hiệp định Paris 1973 là b
                   <span>{isLoadingFile ? 'Đang đọc file...' : 'Tải file Word lên'}</span>
                   <input
                     type="file"
-                    accept=".docx,.doc,.txt"
+                    accept=".docx,.doc,.txt,.rtf,.html,.htm"
                     onChange={handleFileChange}
                     className="hidden"
                   />
@@ -627,6 +634,32 @@ d) Người phụ nữ duy nhất ký vào bản Hiệp định Paris 1973 là b
                 >
                   <Sparkles className="w-4 h-4 text-amber-300" />
                   <span>Phân tích câu hỏi Khối {selectedGrade} ngay</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* File read error notice with instant fallbacks */}
+          {fileReadError && (
+            <div className="mt-3 p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-900 text-xs space-y-2">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div className="whitespace-pre-line leading-relaxed font-medium">{fileReadError}</div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 pl-6">
+                <button
+                  type="button"
+                  onClick={() => setActiveInputMethod('paste')}
+                  className="px-3 py-1.5 bg-white hover:bg-rose-100 text-rose-900 border border-rose-300 rounded-lg font-bold text-[11px] cursor-pointer"
+                >
+                  Chuyển sang Copy & Dán văn bản
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAddManualSingleQuestion}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[11px] cursor-pointer"
+                >
+                  + Nhập câu hỏi thủ công
                 </button>
               </div>
             </div>
@@ -741,7 +774,7 @@ d) Người phụ nữ duy nhất ký vào bản Hiệp định Paris 1973 là b
                           className="px-3 py-1.5 bg-[#073B66] hover:bg-[#0878C9] text-white rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
                         >
                           <Save className="w-3.5 h-3.5 text-amber-300" />
-                          <span>Lưu câu {idx + 1}</span>
+                          <span>Lưu câu hỏi</span>
                         </button>
 
                         {/* Delete this question */}
