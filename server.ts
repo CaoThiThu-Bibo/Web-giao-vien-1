@@ -864,6 +864,99 @@ ${rawText ? `\nNỘI DUNG VĂN BẢN ĐỀ THI CẦN TÁCH:\n"""\n${rawText.slic
   }
 });
 
+// ---------------- GRADUATION EXAM LIBRARY SHARED STORAGE ----------------
+const GRAD_EXAMS_FILE = path.resolve(DATA_DIR, 'graduation_exams.json');
+
+function loadGraduationExamsFromDisk(): any[] {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    if (fs.existsSync(GRAD_EXAMS_FILE)) {
+      const raw = fs.readFileSync(GRAD_EXAMS_FILE, 'utf-8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn('Error reading graduation_exams.json:', err);
+  }
+  return [];
+}
+
+function saveGraduationExamsToDisk(examsList: any[]) {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    fs.writeFileSync(GRAD_EXAMS_FILE, JSON.stringify(examsList, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('Error saving graduation_exams.json:', err);
+  }
+}
+
+let graduationExamsStore: any[] = loadGraduationExamsFromDisk();
+
+app.get('/api/graduation-exams', (_req, res) => {
+  return res.json({
+    success: true,
+    exams: graduationExamsStore,
+  });
+});
+
+app.post('/api/graduation-exams', (req, res) => {
+  try {
+    const { exam, exams: incomingList } = req.body || {};
+    const itemsToUpsert: any[] = [];
+    if (exam && typeof exam === 'object' && exam.id) {
+      itemsToUpsert.push(exam);
+    }
+    if (Array.isArray(incomingList)) {
+      for (const item of incomingList) {
+        if (item && typeof item === 'object' && item.id) {
+          itemsToUpsert.push(item);
+        }
+      }
+    }
+
+    if (itemsToUpsert.length === 0) {
+      return res.status(400).json({ success: false, message: 'Dữ liệu đề thi không hợp lệ.' });
+    }
+
+    const byId = new Map<string, any>();
+    for (const existing of graduationExamsStore) {
+      if (existing?.id) byId.set(existing.id, existing);
+    }
+    for (const item of itemsToUpsert) {
+      byId.set(item.id, item);
+    }
+
+    graduationExamsStore = Array.from(byId.values());
+    saveGraduationExamsToDisk(graduationExamsStore);
+
+    return res.json({
+      success: true,
+      exams: graduationExamsStore,
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      message: err?.message || 'Không thể lưu bộ đề thi lên máy chủ.',
+    });
+  }
+});
+
+app.delete('/api/graduation-exams/:id', (req, res) => {
+  const targetId = req.params.id;
+  graduationExamsStore = graduationExamsStore.filter((e) => e?.id !== targetId);
+  saveGraduationExamsToDisk(graduationExamsStore);
+  return res.json({
+    success: true,
+    exams: graduationExamsStore,
+  });
+});
+
 // API: Student Support & Remedial Recommendation
 app.post('/api/gemini/support-recommendation', async (req, res) => {
   const { studentName, grade, averageScore, attendanceNotes, difficultAreas } = req.body;

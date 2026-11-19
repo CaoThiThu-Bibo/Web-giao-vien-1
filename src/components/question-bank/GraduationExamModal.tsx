@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 import { Modal } from '../common/Modal';
 import { standardGraduationExamQuestions } from '../../data/graduationExamData';
 import { calculateGraduationExamScore, MOET_TF_BAREM } from '../../lib/examScoring';
@@ -44,6 +45,9 @@ import {
   ClipboardPaste,
   Wand2,
   Image as ImageIcon,
+  Send,
+  Play,
+  ListChecks,
 } from 'lucide-react';
 
 export interface GraduationExamItem {
@@ -69,16 +73,32 @@ export const GraduationExamModal: React.FC<GraduationExamModalProps> = ({
   onClose,
   onImportToBank,
 }) => {
-  const { userRole, classes, students, updateStudentScore, exams, addExam, addQuestion } = useApp();
+  const {
+    userRole,
+    classes,
+    students,
+    updateStudentScore,
+    exams,
+    addExam,
+    addQuestion,
+    addNotification,
+  } = useApp();
+  const { currentUser } = useAuth();
 
   // Active Tab:
   // 'library' | 'ai-studio' | 'upload' | 'manual' | 'exam' | 'grading' | 'key'
   const [activeTab, setActiveTab] = useState<
     'library' | 'ai-studio' | 'upload' | 'manual' | 'exam' | 'grading' | 'key'
-  >('grading');
+  >(userRole === 'student' ? 'library' : 'grading');
 
   const [isStudentExamRoomOpen, setIsStudentExamRoomOpen] = useState(false);
   const [isCompactSheetMode, setIsCompactSheetMode] = useState(false);
+
+  // Student Exam Submission States (Phương án 1)
+  const [isStudentExamSubmitted, setIsStudentExamSubmitted] = useState(false);
+  const [isStudentSubmitConfirmOpen, setIsStudentSubmitConfirmOpen] = useState(false);
+  const [studentSubmittedAt, setStudentSubmittedAt] = useState<string | null>(null);
+  const [studentScoreSavedNotice, setStudentScoreSavedNotice] = useState<string | null>(null);
 
   // Default Standard MOET 2025 Exam
   const defaultMoetExam: GraduationExamItem = useMemo(() => {
@@ -126,12 +146,86 @@ export const GraduationExamModal: React.FC<GraduationExamModalProps> = ({
     );
   }, [examLibrary, activeExamId, defaultMoetExam]);
 
-  // Persist examLibrary
+  // Persist examLibrary locally
   useEffect(() => {
     try {
       localStorage.setItem('suhocso_graduation_exams_v2', JSON.stringify(examLibrary));
     } catch (e) {}
   }, [examLibrary]);
+
+  // Helper: sync 1 or many custom exams to shared server so student phones see all exams
+  const syncExamsToServer = async (examsToPush: GraduationExamItem[]) => {
+    const customOnly = examsToPush.filter((e) => e.id !== defaultMoetExam.id);
+    if (customOnly.length === 0) return;
+    try {
+      await fetch('/api/graduation-exams', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ exams: customOnly }),
+      });
+    } catch (err) {
+      console.warn('Could not sync graduation exams to server:', err);
+    }
+  };
+
+  const deleteExamFromServer = async (id: string) => {
+    try {
+      await fetch(`/api/graduation-exams/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+    } catch (err) {
+      console.warn('Could not delete graduation exam from server:', err);
+    }
+  };
+
+  // Fetch shared graduation exams from server whenever modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const resp = await fetch('/api/graduation-exams');
+        if (!resp.ok) return;
+        const json = await resp.json();
+        if (cancelled || !json?.success || !Array.isArray(json.exams)) return;
+
+        const serverExams: GraduationExamItem[] = json.exams;
+        setExamLibrary((prev) => {
+          const mergedMap = new Map<string, GraduationExamItem>();
+          // Put server exams first so teacher updates propagate immediately to phones
+          serverExams.forEach((ex) => {
+            if (ex?.id) mergedMap.set(ex.id, ex);
+          });
+          // Keep any local custom exams not yet on server (and push them if teacher)
+          const localOnlyCustom: GraduationExamItem[] = [];
+          prev.forEach((ex) => {
+            if (ex?.id && !mergedMap.has(ex.id)) {
+              mergedMap.set(ex.id, ex);
+              if (ex.id !== defaultMoetExam.id) {
+                localOnlyCustom.push(ex);
+              }
+            }
+          });
+          if (!mergedMap.has(defaultMoetExam.id)) {
+            mergedMap.set(defaultMoetExam.id, defaultMoetExam);
+          }
+          if (userRole !== 'student' && localOnlyCustom.length > 0) {
+            syncExamsToServer(localOnlyCustom);
+          }
+          // Order: custom exams newest first, default MOET at end
+          const all = Array.from(mergedMap.values());
+          const custom = all.filter((e) => e.id !== defaultMoetExam.id);
+          const def = all.find((e) => e.id === defaultMoetExam.id) || defaultMoetExam;
+          return [...custom, def];
+        });
+      } catch (err) {
+        console.warn('Failed to fetch shared graduation exams:', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, defaultMoetExam, userRole]);
 
   // Answers State for Live Grading on current exam
   // Part 1: questionIndex (0..N-1) -> 'A' | 'B' | 'C' | 'D'
@@ -157,7 +251,17 @@ export const GraduationExamModal: React.FC<GraduationExamModalProps> = ({
       3: { a: undefined, b: undefined, c: undefined, d: undefined },
     });
     setSaveSuccessMsg(null);
+    setIsStudentExamSubmitted(false);
+    setIsStudentSubmitConfirmOpen(false);
+    setStudentSubmittedAt(null);
+    setStudentScoreSavedNotice(null);
     setActiveTab(switchTabTo);
+  };
+
+  // Start timed exam room directly for a specific exam
+  const handleStartTimedExam = (examId: string) => {
+    setActiveExamId(examId);
+    setIsStudentExamRoomOpen(true);
   };
 
   // Target class & student to save score into Gradebook
@@ -173,6 +277,23 @@ export const GraduationExamModal: React.FC<GraduationExamModalProps> = ({
     classStudents[0]?.id || ''
   );
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+
+  // Match logged-in student record if role === 'student'
+  const matchedLoggedInStudent = useMemo(() => {
+    if (userRole !== 'student' || !currentUser) return null;
+    const normName = (currentUser.fullName || '').trim().toLowerCase();
+    const normUsername = (currentUser.username || '').trim().toLowerCase();
+    return (
+      students.find(
+        (s) =>
+          (normName && s.fullName.trim().toLowerCase() === normName) ||
+          (normUsername && s.code && s.code.trim().toLowerCase() === normUsername)
+      ) ||
+      students.find((s) => s.id === selectedStudentId) ||
+      students[0] ||
+      null
+    );
+  }, [userRole, currentUser, students, selectedStudentId]);
 
   // Divide current exam questions
   const part1Questions = currentExam.part1;
@@ -192,6 +313,86 @@ export const GraduationExamModal: React.FC<GraduationExamModalProps> = ({
       part2Questions
     );
   }, [part1Answers, part1CorrectAnswers, part2Answers, part2Questions]);
+
+  // Count how many questions have been answered
+  const totalQuestionsCount = part1Questions.length + part2Questions.length;
+  const part1AnsweredCount = useMemo(
+    () => Object.values(part1Answers).filter((v) => v !== undefined && v !== '').length,
+    [part1Answers]
+  );
+  const part2AnsweredCount = useMemo(() => {
+    let count = 0;
+    part2Questions.forEach((_q, idx) => {
+      const ans = part2Answers[idx];
+      if (
+        ans &&
+        (ans.a !== undefined || ans.b !== undefined || ans.c !== undefined || ans.d !== undefined)
+      ) {
+        count += 1;
+      }
+    });
+    return count;
+  }, [part2Questions, part2Answers]);
+  const totalAnsweredCount = part1AnsweredCount + part2AnsweredCount;
+
+  // Student submits the graduation exam directly on mobile/web
+  const handleConfirmStudentSubmit = () => {
+    setIsStudentSubmitConfirmOpen(false);
+    setIsStudentExamSubmitted(true);
+    const nowStr = new Date().toLocaleTimeString('vi-VN', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    setStudentSubmittedAt(nowStr);
+
+    const targetStudent = matchedLoggedInStudent;
+    const studentName = currentUser?.fullName || targetStudent?.fullName || 'Học viên';
+    const targetClassId = targetStudent?.classId || selectedClassId;
+    const targetClassName =
+      classes.find((c) => c.id === targetClassId)?.name || 'Khối 12 GDTX';
+
+    if (targetStudent) {
+      const existingExam = exams.find(
+        (e) =>
+          e.classId === targetClassId &&
+          (e.title === currentExam.title || e.code === currentExam.code)
+      );
+      const examIdToSave = existingExam?.id || `ex_grad_${currentExam.id}`;
+      if (!existingExam) {
+        addExam({
+          code: currentExam.code || `TN12_${Date.now().toString().slice(-4)}`,
+          title: currentExam.title,
+          classId: targetClassId,
+          className: targetClassName,
+          grade: 12,
+          date: new Date().toISOString().split('T')[0],
+          type: '1 tiết (45 phút)',
+          format: 'Trắc nghiệm',
+          maxScore: 10,
+          weight: 2,
+          description: `Bài thi trực tuyến (${part1Questions.length} câu Phần I + ${part2Questions.length} câu Phần II)`,
+        });
+      }
+      updateStudentScore(
+        targetStudent.id,
+        examIdToSave,
+        scoreResult.totalScore,
+        `Nộp bài ${currentExam.title}: ${scoreResult.totalScore.toFixed(2)}đ (${scoreResult.evaluationLevel})`
+      );
+    }
+
+    addNotification({
+      title: `Học viên ${studentName} vừa nộp bài: ${currentExam.code}`,
+      content: `${targetClassName} · ${currentExam.title}: Đạt ${scoreResult.totalScore.toFixed(2)}/10,0 điểm (${scoreResult.evaluationLevel}) lúc ${nowStr}.`,
+      date: new Date().toLocaleDateString('vi-VN'),
+      type: 'exam',
+      read: false,
+    });
+
+    setStudentScoreSavedNotice(
+      `Đã nộp bài lúc ${nowStr} và ghi nhận điểm ${scoreResult.totalScore.toFixed(2)}/10,0 cho ${studentName}!`
+    );
+  };
 
   // Handle Fill 100% correct answers (for demo / test)
   const handleFillAllCorrect = () => {
@@ -257,6 +458,10 @@ export const GraduationExamModal: React.FC<GraduationExamModalProps> = ({
       3: { a: undefined, b: undefined, c: undefined, d: undefined },
     });
     setSaveSuccessMsg(null);
+    setIsStudentExamSubmitted(false);
+    setIsStudentSubmitConfirmOpen(false);
+    setStudentSubmittedAt(null);
+    setStudentScoreSavedNotice(null);
   };
 
   // Print Exam
@@ -464,13 +669,13 @@ Trọng tâm đổi mới là phát triển nền kinh tế hàng hóa nhiều t
     }
   };
 
-  // Add AI generated exam into Library
+  // Add AI generated exam into Library & sync to server
   const handleSaveAiExamToLibrary = () => {
     if (!aiGeneratedExamPreview) return;
     setExamLibrary((prev) => [aiGeneratedExamPreview, ...prev]);
+    syncExamsToServer([aiGeneratedExamPreview]);
     setActiveExamId(aiGeneratedExamPreview.id);
     setActiveTab('grading');
-    alert(`Đã lưu "${aiGeneratedExamPreview.title}" vào Thư viện luyện thi và chuyển sang Phòng chấm điểm!`);
   };
 
   // =========================================================================
@@ -757,6 +962,7 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
       title: uploadTitle.trim() || uploadPreviewExam.title,
     };
     setExamLibrary((prev) => [finalizedExam, ...prev]);
+    syncExamsToServer([finalizedExam]);
     setActiveExamId(finalizedExam.id);
     setActiveTab('grading');
     setUploadInfo(null);
@@ -855,20 +1061,21 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
       examLibrary.some((e) => e.id === manualTargetExamId);
 
     if (isExistingCustom) {
+      const existing = examLibrary.find((e) => e.id === manualTargetExamId);
+      const updatedExam: GraduationExamItem | null = existing
+        ? {
+            ...existing,
+            title: manualTitle.trim() || existing.title,
+            topic: manualTopic.trim() || existing.topic,
+            note: `Giáo viên nhập thủ công: ${nextPart1.length} câu Phần I + ${nextPart2.length} câu Phần II.`,
+            part1: nextPart1,
+            part2: nextPart2,
+          }
+        : null;
       setExamLibrary((prev) =>
-        prev.map((e) =>
-          e.id === manualTargetExamId
-            ? {
-                ...e,
-                title: manualTitle.trim() || e.title,
-                topic: manualTopic.trim() || e.topic,
-                note: `Giáo viên nhập thủ công: ${nextPart1.length} câu Phần I + ${nextPart2.length} câu Phần II.`,
-                part1: nextPart1,
-                part2: nextPart2,
-              }
-            : e
-        )
+        prev.map((e) => (e.id === manualTargetExamId && updatedExam ? updatedExam : e))
       );
+      if (updatedExam) syncExamsToServer([updatedExam]);
       setActiveExamId(manualTargetExamId);
       return manualTargetExamId;
     }
@@ -886,6 +1093,7 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
       part2: nextPart2,
     };
     setExamLibrary((prev) => [newExam, ...prev]);
+    syncExamsToServer([newExam]);
     setManualTargetExamId(newExamId);
     setActiveExamId(newExamId);
     return newExamId;
@@ -1097,20 +1305,21 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
 
     let savedId = manualTargetExamId;
     if (isUpdatingExisting) {
+      const existing = examLibrary.find((e) => e.id === manualTargetExamId);
+      const updatedExam: GraduationExamItem | null = existing
+        ? {
+            ...existing,
+            title: manualTitle.trim() || existing.title,
+            topic: manualTopic.trim() || existing.topic,
+            note: `Đã cập nhật: ${manualPart1.length} câu Phần I + ${manualPart2.length} câu Phần II.`,
+            part1: manualPart1,
+            part2: manualPart2,
+          }
+        : null;
       setExamLibrary((prev) =>
-        prev.map((e) =>
-          e.id === manualTargetExamId
-            ? {
-                ...e,
-                title: manualTitle.trim() || e.title,
-                topic: manualTopic.trim() || e.topic,
-                note: `Đã cập nhật: ${manualPart1.length} câu Phần I + ${manualPart2.length} câu Phần II.`,
-                part1: manualPart1,
-                part2: manualPart2,
-              }
-            : e
-        )
+        prev.map((e) => (e.id === manualTargetExamId && updatedExam ? updatedExam : e))
       );
+      if (updatedExam) syncExamsToServer([updatedExam]);
     } else {
       savedId = `exam_manual_${Date.now()}`;
       const newExam: GraduationExamItem = {
@@ -1125,6 +1334,7 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
         part2: manualPart2,
       };
       setExamLibrary((prev) => [newExam, ...prev]);
+      syncExamsToServer([newExam]);
     }
 
     if (alsoImportToBank && onImportToBank) {
@@ -1139,16 +1349,18 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
   // Delete an exam from library (except default MOET)
   const handleDeleteExam = (id: string) => {
     if (id === defaultMoetExam.id) {
-      alert('Không thể xóa Đề tham khảo chuẩn Bộ GD&ĐT 2025 mặc định.');
       return;
     }
     if (confirm('Cô có chắc chắn muốn xóa bộ đề thi này khỏi thư viện?')) {
       setExamLibrary((prev) => prev.filter((e) => e.id !== id));
+      deleteExamFromServer(id);
       if (activeExamId === id) {
         setActiveExamId(defaultMoetExam.id);
       }
     }
   };
+
+  const hideAnswersForStudent = userRole === 'student' && !isStudentExamSubmitted;
 
   return (
     <Modal
@@ -1181,17 +1393,32 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
               </p>
             </div>
 
-            {/* Quick Live Score Badge */}
-            <div className="bg-white/10 backdrop-blur-md p-2.5 sm:p-3 rounded-xl border border-white/20 shrink-0 text-center sm:min-w-[170px] flex sm:flex-col items-center justify-between sm:justify-center gap-2">
-              <div className="text-[10px] uppercase font-bold text-sky-200">Tổng điểm hiện tại</div>
-              <div className="text-xl sm:text-2xl font-black text-amber-300 tabular-nums">
-                {scoreResult.totalScore.toFixed(2)}{' '}
-                <span className="text-xs font-normal text-white/80">/ 10,0</span>
+            {/* Quick Progress or Score Badge */}
+            {hideAnswersForStudent ? (
+              <div className="bg-white/10 backdrop-blur-md p-2.5 sm:p-3 rounded-xl border border-white/20 shrink-0 text-center sm:min-w-[175px] flex sm:flex-col items-center justify-between sm:justify-center gap-2">
+                <div className="text-[10px] uppercase font-bold text-sky-200">Tiến độ làm bài</div>
+                <div className="text-lg sm:text-2xl font-black text-amber-300 tabular-nums">
+                  {totalAnsweredCount}{' '}
+                  <span className="text-xs font-normal text-white/80">/ {totalQuestionsCount} câu</span>
+                </div>
+                <div className="hidden sm:block text-[10px] font-semibold text-white/90">
+                  Bấm Nộp bài để xem điểm
+                </div>
               </div>
-              <div className="hidden sm:block text-[10px] font-semibold text-white/90">
-                {scoreResult.evaluationText}
+            ) : (
+              <div className="bg-white/10 backdrop-blur-md p-2.5 sm:p-3 rounded-xl border border-white/20 shrink-0 text-center sm:min-w-[170px] flex sm:flex-col items-center justify-between sm:justify-center gap-2">
+                <div className="text-[10px] uppercase font-bold text-sky-200">
+                  {userRole === 'student' ? 'Kết quả bài thi' : 'Tổng điểm hiện tại'}
+                </div>
+                <div className="text-xl sm:text-2xl font-black text-amber-300 tabular-nums">
+                  {scoreResult.totalScore.toFixed(2)}{' '}
+                  <span className="text-xs font-normal text-white/80">/ 10,0</span>
+                </div>
+                <div className="hidden sm:block text-[10px] font-semibold text-white/90">
+                  {scoreResult.evaluationText}
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Quick Specifications Bar */}
@@ -1212,6 +1439,48 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
               <span>Barem Đúng/Sai</span>
               <strong className="text-sky-200 tabular-nums shrink-0">0.1 | 0.25 | 0.5 | 1.0đ</strong>
             </div>
+          </div>
+        </div>
+
+        {/* Quick Exam Selector Bar — Prominent 1-Tap Exam Switcher & Entry for Mobile & Desktop */}
+        <div className="p-3 bg-sky-50/80 border border-sky-200 rounded-2xl flex flex-col md:flex-row md:items-center gap-2.5 no-print">
+          <div className="flex items-center gap-2 text-[#073B66] font-extrabold text-xs shrink-0">
+            <ListChecks className="w-4 h-4 text-[#0878C9] shrink-0" />
+            <span>Chọn đề thi ({examLibrary.length} đề):</span>
+          </div>
+
+          <select
+            value={activeExamId}
+            onChange={(e) =>
+              handleSelectExam(e.target.value, activeTab === 'exam' ? 'exam' : 'grading')
+            }
+            aria-label="Chọn đề thi để làm bài"
+            className="flex-1 min-w-0 min-h-[42px] px-3 py-2 bg-white border border-sky-300 rounded-xl text-xs sm:text-[13px] font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0878C9]"
+          >
+            {examLibrary.map((exam) => (
+              <option key={exam.id} value={exam.id}>
+                [{exam.code}] {exam.title} ({exam.part1.length + exam.part2.length} câu)
+              </option>
+            ))}
+          </select>
+
+          <div className="grid grid-cols-2 md:flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => handleSelectExam(activeExamId, 'grading')}
+              className="min-h-[42px] px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer transition-colors whitespace-nowrap shrink-0"
+            >
+              <Play className="w-3.5 h-3.5 fill-current shrink-0" />
+              <span>Vào làm bài</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleStartTimedExam(activeExamId)}
+              className="min-h-[42px] px-3.5 py-2 bg-[#073B66] hover:bg-[#0878C9] text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer transition-colors whitespace-nowrap shrink-0"
+            >
+              <Award className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+              <span>Thi tính giờ (50p)</span>
+            </button>
           </div>
         </div>
 
@@ -1435,7 +1704,7 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
                         <span className="text-[10px] text-slate-400">{item.createdAt}</span>
                       </div>
 
-                      {item.id !== defaultMoetExam.id && (
+                      {userRole !== 'student' && item.id !== defaultMoetExam.id && (
                         <button
                           onClick={() => handleDeleteExam(item.id)}
                           className="p-1 text-slate-400 hover:text-rose-600 hover:bg-slate-100 rounded-lg cursor-pointer transition-colors"
@@ -1446,49 +1715,66 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
                       )}
                     </div>
 
-                    <h5 className="font-bold text-slate-900 text-xs line-clamp-1">{item.title}</h5>
+                    <h5 className="font-bold text-slate-900 text-xs sm:text-[13px] leading-snug break-words">
+                      {item.title}
+                    </h5>
                     <p className="text-[11px] text-slate-500 mt-1 line-clamp-2 italic font-serif">
                       {item.note || item.topic}
                     </p>
 
-                    <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
-                      <div className="flex items-center gap-3 text-slate-600">
-                        <span>
-                          Phần I: <strong>{item.part1.length} câu</strong>
-                        </span>
-                        <span>
-                          Phần II: <strong>{item.part2.length} câu</strong>
-                        </span>
-                        <span className="text-emerald-700 font-bold">Tổng 10,0đ</span>
+                    <div className="mt-3 pt-2.5 border-t border-slate-100 space-y-2.5 text-[11px]">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-slate-600">
+                        <div className="flex flex-wrap items-center gap-3 tabular-nums">
+                          <span>
+                            Phần I: <strong>{item.part1.length} câu</strong>
+                          </span>
+                          <span>
+                            Phần II: <strong>{item.part2.length} câu</strong>
+                          </span>
+                          <span className="text-emerald-700 font-bold">Tổng 10,0đ</span>
+                        </div>
+                        {isActive && (
+                          <span className="text-[11px] font-bold text-[#0878C9]">
+                            Đề đang chọn
+                          </span>
+                        )}
                       </div>
 
-                      <div className="flex items-center gap-1.5">
-                        {userRole !== 'student' && (
-                          <button
-                            onClick={() => handleLoadExamToManual(item)}
-                            className="px-2.5 py-1 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 rounded-lg font-bold text-[11px] cursor-pointer flex items-center gap-1"
-                            title="Mở bộ đề này để thêm hoặc chỉnh sửa từng câu hỏi"
-                          >
-                            <Edit3 className="w-3 h-3" />
-                            Sửa / Thêm câu
-                          </button>
-                        )}
+                      <div className="flex flex-wrap items-center gap-2">
                         <button
+                          type="button"
+                          onClick={() => handleSelectExam(item.id, 'grading')}
+                          className="min-h-[42px] flex-1 sm:flex-none px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-extrabold text-xs cursor-pointer shadow-xs transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap"
+                        >
+                          <Play className="w-3.5 h-3.5 fill-current shrink-0" />
+                          <span>Vào làm bài ngay</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleStartTimedExam(item.id)}
+                          className="min-h-[42px] flex-1 sm:flex-none px-3 py-2 bg-sky-50 hover:bg-sky-100 text-[#073B66] border border-sky-200 rounded-xl font-bold text-xs cursor-pointer transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap"
+                        >
+                          <Award className="w-3.5 h-3.5 text-[#0878C9] shrink-0" />
+                          <span>Thi tính giờ (50p)</span>
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => handleSelectExam(item.id, 'exam')}
-                          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold text-[11px] cursor-pointer"
+                          className="min-h-[40px] px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs cursor-pointer whitespace-nowrap"
                         >
                           Xem đề
                         </button>
-                        <button
-                          onClick={() => handleSelectExam(item.id, 'grading')}
-                          className={`px-3 py-1 rounded-lg font-extrabold text-[11px] cursor-pointer shadow-xs transition-colors ${
-                            isActive
-                              ? 'bg-emerald-600 text-white'
-                              : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-900'
-                          }`}
-                        >
-                          {isActive ? '✓ Đang luyện tập' : 'Luyện đề này'}
-                        </button>
+                        {userRole !== 'student' && (
+                          <button
+                            type="button"
+                            onClick={() => handleLoadExamToManual(item)}
+                            className="min-h-[40px] px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 rounded-xl font-bold text-xs cursor-pointer flex items-center gap-1 whitespace-nowrap"
+                            title="Mở bộ đề này để thêm hoặc chỉnh sửa từng câu hỏi"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                            <span>Sửa / Thêm câu</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -2868,16 +3154,58 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
            ========================================================================= */}
         {activeTab === 'grading' && (
           <div className="space-y-4 sm:space-y-5">
-            {/* Live Score Board Card */}
+            {/* Student Submitted Confirmation Banner */}
+            {userRole === 'student' && isStudentExamSubmitted && studentScoreSavedNotice && (
+              <div className="p-3.5 sm:p-4 bg-emerald-50 border border-emerald-300 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-start gap-2.5 min-w-0">
+                  <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                  <div className="min-w-0 space-y-0.5">
+                    <div className="font-extrabold text-emerald-900 text-xs sm:text-sm">
+                      Nộp bài thành công{studentSubmittedAt ? ` lúc ${studentSubmittedAt}` : ''}!
+                    </div>
+                    <p className="text-emerald-800 text-xs leading-relaxed break-words">
+                      {studentScoreSavedNotice}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleResetAnswers}
+                    className="min-h-[42px] px-3.5 py-2 bg-white hover:bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Làm lại đề này</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('library')}
+                    className="min-h-[42px] px-3.5 py-2 bg-[#073B66] hover:bg-[#0878C9] text-white rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                  >
+                    <FolderOpen className="w-3.5 h-3.5" />
+                    <span>Chọn đề khác</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Live Score Board Card (Teacher or Submitted Student) OR Clean Progress Card (Pre-Submit Student) */}
             <div className="p-3.5 sm:p-4 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-3.5 sm:space-y-4">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-200">
                 <div className="min-w-0">
                   <div className="text-[11px] text-slate-500 font-medium break-words mb-0.5">
-                    {userRole === 'student' ? 'Chế độ Luyện thi trực tiếp' : 'Chấm điểm trực tiếp'} · {currentExam.title} ({currentExam.code})
+                    {userRole === 'student'
+                      ? isStudentExamSubmitted
+                        ? 'Kết quả bài thi đã nộp'
+                        : 'Đang làm bài thi trực tuyến'
+                      : 'Chấm điểm trực tiếp'}{' '}
+                    · {currentExam.title} ({currentExam.code})
                   </div>
                   <h4 className="text-sm font-bold text-slate-800">
-                    {userRole === 'student'
-                      ? 'Làm bài & Tự chấm điểm tức thời (Thang 10,0)'
+                    {hideAnswersForStudent
+                      ? 'Chọn đáp án các câu bên dưới rồi bấm Nộp bài để chấm điểm'
+                      : userRole === 'student'
+                      ? 'Bảng điểm & Đáp án chi tiết sau khi nộp bài (Thang 10,0)'
                       : 'Bảng điều khiển chấm bài và tính điểm tức thời (Tổng 10,0 điểm)'}
                   </h4>
                 </div>
@@ -2918,96 +3246,133 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
                         Chấm thử học sinh khá (~8đ)
                       </button>
                     </>
+                  ) : hideAnswersForStudent ? (
+                    <button
+                      type="button"
+                      onClick={() => setIsStudentSubmitConfirmOpen(true)}
+                      className="min-h-[42px] px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-extrabold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors whitespace-nowrap"
+                    >
+                      <Send className="w-4 h-4 shrink-0" />
+                      <span>Nộp bài ngay</span>
+                    </button>
                   ) : (
                     <button
                       type="button"
-                      onClick={() => setIsStudentExamRoomOpen(true)}
-                      className="min-h-[42px] px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                      onClick={() => handleStartTimedExam(activeExamId)}
+                      className="min-h-[42px] px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors whitespace-nowrap"
                     >
-                      <Award className="w-4 h-4 text-amber-200" />
-                      Vào phòng thi tính giờ (50 phút)
+                      <Award className="w-4 h-4 text-amber-200 shrink-0" />
+                      <span>Thi tính giờ (50 phút)</span>
                     </button>
                   )}
 
                   <button
                     type="button"
                     onClick={handleResetAnswers}
-                    className="min-h-[40px] px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                    className="min-h-[42px] px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold flex items-center gap-1 cursor-pointer transition-colors whitespace-nowrap"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
-                    Làm lại
+                    <span>Làm lại</span>
                   </button>
                 </div>
               </div>
 
-              {/* Real-time score metrics */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
-                <div className="p-2.5 sm:p-3 bg-sky-50 rounded-xl border border-sky-200 text-center">
-                  <div className="text-[11px] text-sky-700 font-medium">
-                    Điểm Phần I ({part1Questions.length} câu)
+              {hideAnswersForStudent ? (
+                <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                  <div className="p-2.5 sm:p-3 bg-sky-50 rounded-xl border border-sky-200 text-center">
+                    <div className="text-[11px] text-sky-700 font-medium">Tổng tiến độ</div>
+                    <div className="text-base sm:text-xl font-black text-[#073B66] mt-0.5 tabular-nums">
+                      {totalAnsweredCount} / {totalQuestionsCount}
+                    </div>
+                    <div className="text-[10px] text-sky-600 font-semibold mt-0.5">Câu đã làm</div>
                   </div>
-                  <div className="text-lg sm:text-xl font-black text-[#073B66] mt-0.5 tabular-nums">
-                    {scoreResult.part1Score.toFixed(2)}
-                    <span className="text-xs font-normal text-slate-500">
-                      {' '}
-                      / {(part1Questions.length * 0.25).toFixed(1)}
-                    </span>
+                  <div className="p-2.5 sm:p-3 bg-slate-50 rounded-xl border border-slate-200 text-center">
+                    <div className="text-[11px] text-slate-600 font-medium">Phần I (A/B/C/D)</div>
+                    <div className="text-base sm:text-xl font-black text-slate-800 mt-0.5 tabular-nums">
+                      {part1AnsweredCount} / {part1Questions.length}
+                    </div>
+                    <div className="text-[10px] text-slate-500 font-semibold mt-0.5">0,25đ / câu</div>
                   </div>
-                  <div className="text-[10px] text-sky-600 font-semibold mt-0.5 tabular-nums">
-                    {scoreResult.part1CorrectCount} / {part1Questions.length} câu đúng (×0,25đ)
+                  <div className="p-2.5 sm:p-3 bg-purple-50 rounded-xl border border-purple-200 text-center">
+                    <div className="text-[11px] text-purple-700 font-medium">Phần II (Đúng/Sai)</div>
+                    <div className="text-base sm:text-xl font-black text-purple-900 mt-0.5 tabular-nums">
+                      {part2AnsweredCount} / {part2Questions.length}
+                    </div>
+                    <div className="text-[10px] text-purple-600 font-semibold mt-0.5">1,0đ / câu</div>
                   </div>
                 </div>
+              ) : (
+                <>
+                  {/* Real-time score metrics */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
+                    <div className="p-2.5 sm:p-3 bg-sky-50 rounded-xl border border-sky-200 text-center">
+                      <div className="text-[11px] text-sky-700 font-medium">
+                        Điểm Phần I ({part1Questions.length} câu)
+                      </div>
+                      <div className="text-lg sm:text-xl font-black text-[#073B66] mt-0.5 tabular-nums">
+                        {scoreResult.part1Score.toFixed(2)}
+                        <span className="text-xs font-normal text-slate-500">
+                          {' '}
+                          / {(part1Questions.length * 0.25).toFixed(1)}
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-sky-600 font-semibold mt-0.5 tabular-nums">
+                        {scoreResult.part1CorrectCount} / {part1Questions.length} câu đúng (×0,25đ)
+                      </div>
+                    </div>
 
-                <div className="p-2.5 sm:p-3 bg-purple-50 rounded-xl border border-purple-200 text-center">
-                  <div className="text-[11px] text-purple-700 font-medium">
-                    Điểm Phần II ({part2Questions.length} câu Đ/S)
-                  </div>
-                  <div className="text-lg sm:text-xl font-black text-purple-900 mt-0.5 tabular-nums">
-                    {scoreResult.part2Score.toFixed(2)}
-                    <span className="text-xs font-normal text-slate-500">
-                      {' '}
-                      / {(part2Questions.length * 1.0).toFixed(1)}
-                    </span>
-                  </div>
-                  <div className="text-[10px] text-purple-600 font-semibold mt-0.5">
-                    Barem bậc thang Bộ GD&ĐT
-                  </div>
-                </div>
+                    <div className="p-2.5 sm:p-3 bg-purple-50 rounded-xl border border-purple-200 text-center">
+                      <div className="text-[11px] text-purple-700 font-medium">
+                        Điểm Phần II ({part2Questions.length} câu Đ/S)
+                      </div>
+                      <div className="text-lg sm:text-xl font-black text-purple-900 mt-0.5 tabular-nums">
+                        {scoreResult.part2Score.toFixed(2)}
+                        <span className="text-xs font-normal text-slate-500">
+                          {' '}
+                          / {(part2Questions.length * 1.0).toFixed(1)}
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-purple-600 font-semibold mt-0.5">
+                        Barem bậc thang Bộ GD&ĐT
+                      </div>
+                    </div>
 
-                <div className="p-2.5 sm:p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-center">
-                  <div className="text-[11px] text-emerald-700 font-medium">TỔNG ĐIỂM</div>
-                  <div className="text-xl sm:text-2xl font-black text-emerald-700 mt-0.5 tabular-nums">
-                    {scoreResult.totalScore.toFixed(2)}
-                    <span className="text-xs font-normal text-slate-500"> / 10,0</span>
-                  </div>
-                  <div className="text-[10px] text-emerald-800 font-extrabold uppercase mt-0.5">
-                    Mức: {scoreResult.evaluationLevel}
-                  </div>
-                </div>
+                    <div className="p-2.5 sm:p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-center">
+                      <div className="text-[11px] text-emerald-700 font-medium">TỔNG ĐIỂM</div>
+                      <div className="text-xl sm:text-2xl font-black text-emerald-700 mt-0.5 tabular-nums">
+                        {scoreResult.totalScore.toFixed(2)}
+                        <span className="text-xs font-normal text-slate-500"> / 10,0</span>
+                      </div>
+                      <div className="text-[10px] text-emerald-800 font-extrabold uppercase mt-0.5">
+                        Mức: {scoreResult.evaluationLevel}
+                      </div>
+                    </div>
 
-                <div className="p-2.5 sm:p-3 bg-amber-50 rounded-xl border border-amber-200 text-center flex flex-col justify-center">
-                  <div className="text-[11px] text-amber-800 font-medium">Xếp loại Thông tư 43</div>
-                  <div className="text-xs sm:text-sm font-bold text-amber-900 mt-1">
-                    {scoreResult.evaluationText}
+                    <div className="p-2.5 sm:p-3 bg-amber-50 rounded-xl border border-amber-200 text-center flex flex-col justify-center">
+                      <div className="text-[11px] text-amber-800 font-medium">Xếp loại Thông tư 43</div>
+                      <div className="text-xs sm:text-sm font-bold text-amber-900 mt-1">
+                        {scoreResult.evaluationText}
+                      </div>
+                      <div className="text-[10px] text-amber-700 mt-0.5">
+                        {scoreResult.totalScore >= 5.0 ? '✓ Đủ chuẩn tốt nghiệp' : 'Cần ôn tập thêm'}
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-[10px] text-amber-700 mt-0.5">
-                    {scoreResult.totalScore >= 5.0 ? '✓ Đủ chuẩn tốt nghiệp' : 'Cần ôn tập thêm'}
-                  </div>
-                </div>
-              </div>
 
-              {/* Pedagogical Comment Card */}
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-start gap-2.5">
-                <BookOpen className="w-4 h-4 text-[#0878C9] shrink-0 mt-0.5" />
-                <div className="space-y-0.5 min-w-0">
-                  <span className="font-bold text-slate-800">
-                    Nhận xét sư phạm tự động dành cho học viên GDTX:
-                  </span>
-                  <p className="text-slate-600 italic leading-relaxed break-words">
-                    "{scoreResult.pedagogicalComment}"
-                  </p>
-                </div>
-              </div>
+                  {/* Pedagogical Comment Card */}
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-start gap-2.5">
+                    <BookOpen className="w-4 h-4 text-[#0878C9] shrink-0 mt-0.5" />
+                    <div className="space-y-0.5 min-w-0">
+                      <span className="font-bold text-slate-800">
+                        Nhận xét sư phạm tự động dành cho học viên GDTX:
+                      </span>
+                      <p className="text-slate-600 italic leading-relaxed break-words">
+                        "{scoreResult.pedagogicalComment}"
+                      </p>
+                    </div>
+                  </div>
+                </>
+              )}
 
               {/* Save directly to Gradebook (Teacher only) */}
               {userRole !== 'student' && (
@@ -3078,7 +3443,7 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
                     </span>
                   </h4>
                   <span className="text-xs font-bold text-emerald-700 tabular-nums">
-                    {userRole === 'student' ? 'Đã làm' : 'Đã chấm'}: {Object.keys(part1Answers).length} / {part1Questions.length} câu
+                    {userRole === 'student' ? 'Đã làm' : 'Đã chấm'}: {part1AnsweredCount} / {part1Questions.length} câu
                   </span>
                 </div>
 
@@ -3088,6 +3453,7 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
                     const isCorrect = studentAns === q.correctAnswer;
                     const isAnswered = studentAns !== undefined && studentAns !== '';
                     const compactMode = isCompactSheetMode && userRole !== 'student';
+                    const isLockedAfterSubmit = userRole === 'student' && isStudentExamSubmitted;
 
                     return (
                       <div
@@ -3095,6 +3461,8 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
                         className={`p-3 sm:p-4 rounded-xl border transition-all space-y-2.5 ${
                           !isAnswered
                             ? 'bg-slate-50/70 border-slate-200'
+                            : hideAnswersForStudent
+                            ? 'bg-sky-50/40 border-sky-300'
                             : isCorrect
                             ? 'bg-emerald-50/50 border-emerald-300'
                             : 'bg-rose-50/50 border-rose-300'
@@ -3107,7 +3475,11 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
                           </div>
                           <span className="text-[11px] font-bold shrink-0 tabular-nums">
                             {isAnswered ? (
-                              isCorrect ? (
+                              hideAnswersForStudent ? (
+                                <span className="text-[#073B66] bg-sky-100 px-2 py-0.5 rounded">
+                                  Đã chọn {studentAns}
+                                </span>
+                              ) : isCorrect ? (
                                 <span className="text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
                                   +0,25đ ✓
                                 </span>
@@ -3116,6 +3488,10 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
                                   0,0đ · Đáp án {q.correctAnswer}
                                 </span>
                               )
+                            ) : isLockedAfterSubmit ? (
+                              <span className="text-rose-700 bg-rose-100 px-2 py-0.5 rounded">
+                                Bỏ trống · Đáp án {q.correctAnswer}
+                              </span>
                             ) : (
                               <span className="text-slate-400">Chưa làm</span>
                             )}
@@ -3166,16 +3542,25 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
                                 'bg-white border-slate-200 text-slate-800 hover:border-sky-300 hover:bg-sky-50/40';
                               let badgeStyle = 'bg-slate-100 text-slate-700 border-slate-200';
 
-                              if (isSelected) {
+                              if (hideAnswersForStudent) {
+                                if (isSelected) {
+                                  cardStyle =
+                                    'bg-sky-50 border-[#0878C9] text-[#073B66] font-semibold ring-1 ring-sky-300';
+                                  badgeStyle = 'bg-[#0878C9] text-white border-[#0878C9]';
+                                }
+                              } else if (isSelected) {
                                 if (isCorrect) {
-                                  cardStyle = 'bg-emerald-50 border-emerald-500 text-emerald-950 font-semibold ring-1 ring-emerald-300';
+                                  cardStyle =
+                                    'bg-emerald-50 border-emerald-500 text-emerald-950 font-semibold ring-1 ring-emerald-300';
                                   badgeStyle = 'bg-emerald-600 text-white border-emerald-600';
                                 } else {
-                                  cardStyle = 'bg-rose-50 border-rose-400 text-rose-950 font-semibold ring-1 ring-rose-300';
+                                  cardStyle =
+                                    'bg-rose-50 border-rose-400 text-rose-950 font-semibold ring-1 ring-rose-300';
                                   badgeStyle = 'bg-rose-600 text-white border-rose-600';
                                 }
-                              } else if (isAnswered && !isCorrect && isRightKey) {
-                                cardStyle = 'bg-emerald-50/70 border-emerald-400 text-emerald-900 font-medium';
+                              } else if ((isAnswered || isLockedAfterSubmit) && !isCorrect && isRightKey) {
+                                cardStyle =
+                                  'bg-emerald-50/70 border-emerald-400 text-emerald-900 font-medium';
                                 badgeStyle = 'bg-emerald-600 text-white border-emerald-600';
                               }
 
@@ -3183,13 +3568,16 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
                                 <button
                                   key={optKey}
                                   type="button"
+                                  disabled={isLockedAfterSubmit}
                                   onClick={() =>
                                     setPart1Answers((prev) => ({
                                       ...prev,
                                       [qIdx]: optKey,
                                     }))
                                   }
-                                  className={`min-h-[44px] w-full text-left p-2.5 sm:p-3 rounded-xl border text-xs sm:text-[13px] leading-relaxed flex items-start gap-2.5 transition-all cursor-pointer ${cardStyle}`}
+                                  className={`min-h-[44px] w-full text-left p-2.5 sm:p-3 rounded-xl border text-xs sm:text-[13px] leading-relaxed flex items-start gap-2.5 transition-all ${
+                                    isLockedAfterSubmit ? 'cursor-default' : 'cursor-pointer'
+                                  } ${cardStyle}`}
                                 >
                                   <span
                                     className={`w-7 h-7 rounded-lg border font-extrabold text-xs shrink-0 flex items-center justify-center ${badgeStyle}`}
@@ -3202,6 +3590,12 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
                                 </button>
                               );
                             })}
+                          </div>
+                        )}
+
+                        {!hideAnswersForStudent && isLockedAfterSubmit && q.explanation && (
+                          <div className="p-2.5 bg-white/90 rounded-lg border border-slate-200 text-[11px] text-slate-600 leading-relaxed">
+                            <strong className="text-[#073B66]">Giải thích:</strong> {q.explanation}
                           </div>
                         )}
                       </div>
@@ -3224,8 +3618,9 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
                     </span>
                   </h4>
                   <span className="text-xs font-bold text-purple-700 tabular-nums">
-                    Điểm Phần II: {scoreResult.part2Score.toFixed(2)} /{' '}
-                    {(part2Questions.length * 1.0).toFixed(1)}đ
+                    {hideAnswersForStudent
+                      ? `Đã làm: ${part2AnsweredCount} / ${part2Questions.length} câu`
+                      : `Điểm Phần II: ${scoreResult.part2Score.toFixed(2)} / ${(part2Questions.length * 1.0).toFixed(1)}đ`}
                   </span>
                 </div>
 
@@ -3233,6 +3628,10 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
                   {part2Questions.map((q, qIdx) => {
                     const detail = scoreResult.part2Details[qIdx];
                     const currentAnswers = part2Answers[qIdx] || {};
+                    const answeredStmtsCount = (['a', 'b', 'c', 'd'] as const).filter(
+                      (k) => currentAnswers[k] !== undefined
+                    ).length;
+                    const isLockedAfterSubmit = userRole === 'student' && isStudentExamSubmitted;
 
                     return (
                       <div
@@ -3247,14 +3646,20 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
                             {q.topic}
                           </span>
 
-                          <div className="flex items-center gap-2 shrink-0 tabular-nums">
-                            <span className="text-[11px] text-slate-600">
-                              Đúng: <strong>{detail?.correctCount ?? 0} / 4 ý</strong>
+                          {hideAnswersForStudent ? (
+                            <span className="text-[11px] font-bold text-[#073B66] bg-sky-100 px-2.5 py-0.5 rounded-lg shrink-0 self-start sm:self-center tabular-nums">
+                              Đã chọn: {answeredStmtsCount} / 4 ý
                             </span>
-                            <span className="bg-purple-100 text-purple-900 px-2.5 py-0.5 rounded-lg font-bold text-xs border border-purple-200">
-                              Điểm: {detail?.score.toFixed(2) ?? '0.00'} / 1,0đ
-                            </span>
-                          </div>
+                          ) : (
+                            <div className="flex items-center gap-2 shrink-0 tabular-nums">
+                              <span className="text-[11px] text-slate-600">
+                                Đúng: <strong>{detail?.correctCount ?? 0} / 4 ý</strong>
+                              </span>
+                              <span className="bg-purple-100 text-purple-900 px-2.5 py-0.5 rounded-lg font-bold text-xs border border-purple-200">
+                                Điểm: {detail?.score.toFixed(2) ?? '0.00'} / 1,0đ
+                              </span>
+                            </div>
+                          )}
                         </div>
 
                         {/* Full reading stimulus / question text */}
@@ -3274,68 +3679,97 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
                             return (
                               <div
                                 key={stmt.id}
-                                className={`p-3 bg-white rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs sm:text-[13px] transition-colors ${
+                                className={`p-3 bg-white rounded-xl border flex flex-col gap-2 text-xs sm:text-[13px] transition-colors ${
                                   !isAnswered
                                     ? 'border-slate-200'
+                                    : hideAnswersForStudent
+                                    ? 'border-sky-300 bg-sky-50/30'
                                     : isCorrect
                                     ? 'border-emerald-300 bg-emerald-50/30'
                                     : 'border-rose-300 bg-rose-50/30'
                                 }`}
                               >
-                                <div className="flex-1 min-w-0 font-serif leading-relaxed break-words">
-                                  <strong className="mr-1.5 uppercase font-sans text-purple-800">
-                                    {stmt.id})
-                                  </strong>
-                                  <span className="text-slate-800">{stmt.statement}</span>
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                                  <div className="flex-1 min-w-0 font-serif leading-relaxed break-words">
+                                    <strong className="mr-1.5 uppercase font-sans text-purple-800">
+                                      {stmt.id})
+                                    </strong>
+                                    <span className="text-slate-800">{stmt.statement}</span>
+                                  </div>
+
+                                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                                    {/* Toggle ĐÚNG */}
+                                    <button
+                                      type="button"
+                                      disabled={isLockedAfterSubmit}
+                                      onClick={() =>
+                                        setPart2Answers((prev) => ({
+                                          ...prev,
+                                          [qIdx]: {
+                                            ...prev[qIdx],
+                                            [stmt.id]: true,
+                                          },
+                                        }))
+                                      }
+                                      className={`min-h-[42px] px-4 py-1.5 rounded-xl border text-xs font-bold transition-all whitespace-nowrap ${
+                                        isLockedAfterSubmit ? 'cursor-default' : 'cursor-pointer'
+                                      } ${
+                                        studentVal === true
+                                          ? hideAnswersForStudent
+                                            ? 'bg-[#0878C9] text-white border-[#0878C9]'
+                                            : stmt.isCorrect === true
+                                            ? 'bg-emerald-600 text-white border-emerald-600'
+                                            : 'bg-rose-600 text-white border-rose-600'
+                                          : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100'
+                                      }`}
+                                    >
+                                      Đúng{' '}
+                                      {!hideAnswersForStudent &&
+                                        studentVal === true &&
+                                        (stmt.isCorrect ? '✓' : '✗')}
+                                    </button>
+
+                                    {/* Toggle SAI */}
+                                    <button
+                                      type="button"
+                                      disabled={isLockedAfterSubmit}
+                                      onClick={() =>
+                                        setPart2Answers((prev) => ({
+                                          ...prev,
+                                          [qIdx]: {
+                                            ...prev[qIdx],
+                                            [stmt.id]: false,
+                                          },
+                                        }))
+                                      }
+                                      className={`min-h-[42px] px-4 py-1.5 rounded-xl border text-xs font-bold transition-all whitespace-nowrap ${
+                                        isLockedAfterSubmit ? 'cursor-default' : 'cursor-pointer'
+                                      } ${
+                                        studentVal === false
+                                          ? hideAnswersForStudent
+                                            ? 'bg-[#0878C9] text-white border-[#0878C9]'
+                                            : stmt.isCorrect === false
+                                            ? 'bg-emerald-600 text-white border-emerald-600'
+                                            : 'bg-rose-600 text-white border-rose-600'
+                                          : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100'
+                                      }`}
+                                    >
+                                      Sai{' '}
+                                      {!hideAnswersForStudent &&
+                                        studentVal === false &&
+                                        (!stmt.isCorrect ? '✓' : '✗')}
+                                    </button>
+                                  </div>
                                 </div>
 
-                                <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                                  {/* Toggle ĐÚNG */}
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setPart2Answers((prev) => ({
-                                        ...prev,
-                                        [qIdx]: {
-                                          ...prev[qIdx],
-                                          [stmt.id]: true,
-                                        },
-                                      }))
-                                    }
-                                    className={`min-h-[42px] px-4 py-1.5 rounded-xl border text-xs font-bold cursor-pointer transition-all ${
-                                      studentVal === true
-                                        ? stmt.isCorrect === true
-                                          ? 'bg-emerald-600 text-white border-emerald-600'
-                                          : 'bg-rose-600 text-white border-rose-600'
-                                        : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100'
-                                    }`}
-                                  >
-                                    Đúng {studentVal === true && (stmt.isCorrect ? '✓' : '✗')}
-                                  </button>
-
-                                  {/* Toggle SAI */}
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setPart2Answers((prev) => ({
-                                        ...prev,
-                                        [qIdx]: {
-                                          ...prev[qIdx],
-                                          [stmt.id]: false,
-                                        },
-                                      }))
-                                    }
-                                    className={`min-h-[42px] px-4 py-1.5 rounded-xl border text-xs font-bold cursor-pointer transition-all ${
-                                      studentVal === false
-                                        ? stmt.isCorrect === false
-                                          ? 'bg-emerald-600 text-white border-emerald-600'
-                                          : 'bg-rose-600 text-white border-rose-600'
-                                        : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100'
-                                    }`}
-                                  >
-                                    Sai {studentVal === false && (!stmt.isCorrect ? '✓' : '✗')}
-                                  </button>
-                                </div>
+                                {!hideAnswersForStudent && isLockedAfterSubmit && (
+                                  <div className="text-[11px] text-slate-600 pt-1 border-t border-slate-100">
+                                    <span className="font-bold text-purple-800">
+                                      Đáp án chuẩn: {stmt.isCorrect ? 'ĐÚNG' : 'SAI'}
+                                    </span>
+                                    {stmt.explanation ? ` — ${stmt.explanation}` : ''}
+                                  </div>
+                                )}
                               </div>
                             );
                           })}
@@ -3346,6 +3780,64 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
                 </div>
               </div>
             </div>
+
+            {/* Sticky Bottom Submit Action Bar for Students (Always Visible on Mobile & Desktop) */}
+            {userRole === 'student' && (
+              <div className="sticky bottom-0 z-20 -mx-3 sm:-mx-6 -mb-3 sm:-mb-6 px-3 sm:px-6 py-3 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-6px_20px_rgba(15,23,42,0.1)] flex items-center justify-between gap-3">
+                {!isStudentExamSubmitted ? (
+                  <>
+                    <div className="min-w-0">
+                      <div className="text-xs sm:text-sm font-extrabold text-[#073B66] tabular-nums">
+                        Đã làm {totalAnsweredCount} / {totalQuestionsCount} câu
+                      </div>
+                      <div className="text-[11px] text-slate-500 truncate">
+                        {totalAnsweredCount < totalQuestionsCount
+                          ? `Còn ${totalQuestionsCount - totalAnsweredCount} câu chưa chọn`
+                          : 'Đã trả lời đủ câu hỏi — sẵn sàng nộp bài'}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsStudentSubmitConfirmOpen(true)}
+                      className="min-h-[44px] px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white rounded-xl font-extrabold text-xs sm:text-sm flex items-center gap-2 shadow-md cursor-pointer transition-all whitespace-nowrap shrink-0"
+                    >
+                      <Send className="w-4 h-4 shrink-0" />
+                      <span>Nộp bài</span>
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="min-w-0">
+                      <div className="text-xs sm:text-sm font-extrabold text-emerald-700 tabular-nums">
+                        Kết quả: {scoreResult.totalScore.toFixed(2)} / 10,0đ ({scoreResult.evaluationLevel})
+                      </div>
+                      <div className="text-[11px] text-slate-500 truncate">
+                        {scoreResult.evaluationText}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('library')}
+                        className="min-h-[42px] px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold text-xs cursor-pointer whitespace-nowrap"
+                      >
+                        Chọn đề khác
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleResetAnswers}
+                        className="min-h-[42px] px-3.5 py-2 bg-[#073B66] hover:bg-[#0878C9] text-white rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>Làm lại</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -3449,6 +3941,68 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
         )}
       </div>
 
+      {/* Inline Confirmation Dialog for Student Exam Submission */}
+      {isStudentSubmitConfirmOpen && (
+        <div
+          className="fixed inset-0 z-[70] bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 font-sans"
+          onClick={() => setIsStudentSubmitConfirmOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md bg-white rounded-2xl border border-slate-200 shadow-2xl p-5 space-y-4"
+          >
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                <Send className="w-5 h-5" />
+              </div>
+              <div className="min-w-0 space-y-1">
+                <h4 className="text-base font-extrabold text-slate-900">
+                  Xác nhận nộp bài thi?
+                </h4>
+                <p className="text-xs text-slate-600 leading-relaxed break-words">
+                  Đề thi: <strong className="text-slate-800">{currentExam.title}</strong> ({currentExam.code})
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-600">Số câu đã trả lời:</span>
+                <strong className="text-[#073B66] tabular-nums">
+                  {totalAnsweredCount} / {totalQuestionsCount} câu
+                </strong>
+              </div>
+              {totalAnsweredCount < totalQuestionsCount && (
+                <div className="flex items-center gap-1.5 text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 font-semibold">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>
+                    Còn {totalQuestionsCount - totalAnsweredCount} câu chưa trả lời. Em vẫn muốn nộp bài?
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => setIsStudentSubmitConfirmOpen(false)}
+                className="min-h-[44px] px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs cursor-pointer transition-colors"
+              >
+                Quay lại kiểm tra
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmStudentSubmit}
+                className="min-h-[44px] px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-sm cursor-pointer transition-colors"
+              >
+                <CheckCircle className="w-4 h-4 shrink-0" />
+                <span>Xác nhận Nộp bài</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Phòng Làm Bài Thi Trực Tuyến Học Sinh (Có đếm ngược thời gian) */}
       <StudentExamRoomModal
         isOpen={isStudentExamRoomOpen}
@@ -3456,8 +4010,8 @@ d) Chiến thắng Điện Biên Phủ chấm dứt hoàn toàn sự can thiệp
         examTitle={currentExam.title}
         initialQuestions={[...part1Questions, ...part2Questions]}
         defaultDurationMinutes={50}
-        initialClassId={selectedClassId}
-        initialStudentId={selectedStudentId}
+        initialClassId={matchedLoggedInStudent?.classId || selectedClassId}
+        initialStudentId={matchedLoggedInStudent?.id || selectedStudentId}
         initialTeacherMode={false}
         initialProctoringPreview={userRole !== 'student'}
       />

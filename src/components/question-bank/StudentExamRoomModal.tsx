@@ -2115,6 +2115,9 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
     setIsTimerPaused(true);
     exitFullscreenSafely();
     notifyProctoringViolationsIfAny();
+    if (isStudentTakingExam && currentStudent) {
+      handleSaveScoreToGradebook(true);
+    }
   };
 
   const handleAutoSubmit = () => {
@@ -2123,12 +2126,17 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
     setIsTimerPaused(true);
     exitFullscreenSafely();
     notifyProctoringViolationsIfAny();
-    alert('⏱ Đã hết thời gian làm bài! Hệ thống tự động thu bài và chuyển sang xem bảng điểm.');
+    if (isStudentTakingExam && currentStudent) {
+      handleSaveScoreToGradebook(true);
+    }
+    showToast('Đã hết thời gian làm bài! Hệ thống đã tự động nộp bài và lưu điểm.');
   };
 
-  const handleSaveScoreToGradebook = () => {
+  const handleSaveScoreToGradebook = (silent = false) => {
     if (!currentStudent) {
-      alert('Chưa có thông tin học viên để lưu điểm!');
+      if (!silent) {
+        showToast('Chưa có thông tin học viên để lưu điểm!');
+      }
       return;
     }
 
@@ -2307,6 +2315,18 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                   <span className="hidden sm:inline">Giám sát:</span>
                   <span>{proctoringViolations.length} vi phạm</span>
                 </div>
+              )}
+
+              {/* Always-visible quick Nộp bài button in mobile header while taking exam */}
+              {isExamSessionStarted && !isSubmitted && (
+                <button
+                  type="button"
+                  onClick={() => setIsConfirmSubmitOpen(true)}
+                  className="md:hidden min-h-[38px] px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-extrabold text-xs flex items-center gap-1 shadow-xs cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  <Send className="w-3.5 h-3.5 shrink-0" />
+                  <span>Nộp bài</span>
+                </button>
               )}
 
               {/* Chỉ cho Giáo viên đang xem thử cộng thêm giờ */}
@@ -3429,9 +3449,9 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
               </div>
             </aside>
 
-            {/* Mobile Sticky Bottom Action Bar (< md) */}
+            {/* Mobile Sticky Bottom Action Bar (< md) — Nộp bài ALWAYS visible on every question */}
             <div
-              className={`md:hidden shrink-0 border-t px-3 py-2 flex items-center justify-between gap-2 font-sans z-30 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] ${
+              className={`md:hidden shrink-0 border-t px-2.5 py-2 flex items-center justify-between gap-1.5 font-sans z-30 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] ${
                 theme === 'dark' ? 'bg-[#141820] border-slate-700' : 'bg-white border-slate-200'
               } ${
                 isProctoringLive && isProctoringWarningOpen
@@ -3443,25 +3463,26 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                 type="button"
                 onClick={() => setCurrentQuestionIndex((prev) => Math.max(0, prev - 1))}
                 disabled={currentQuestionIndex === 0 || displayedQuestions.length === 0}
-                className="min-h-[44px] px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl font-bold text-xs flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap"
+                aria-label="Câu trước"
+                className="min-h-[44px] px-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl font-bold text-xs flex items-center gap-0.5 cursor-pointer shrink-0 whitespace-nowrap"
               >
-                <ChevronLeft className="w-4 h-4" />
-                <span>Trước</span>
+                <ChevronLeft className="w-4 h-4 shrink-0" />
+                <span className="hidden min-[390px]:inline">Trước</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setIsMobileQuestionDrawerOpen(true)}
-                className="min-h-[44px] flex-1 px-3 bg-sky-50 hover:bg-sky-100 dark:bg-slate-800 dark:hover:bg-slate-700 border border-sky-200 dark:border-slate-600 text-[#073B66] dark:text-sky-200 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer tabular-nums whitespace-nowrap"
+                className="min-h-[44px] flex-1 min-w-0 px-2 bg-sky-50 hover:bg-sky-100 dark:bg-slate-800 dark:hover:bg-slate-700 border border-sky-200 dark:border-slate-600 text-[#073B66] dark:text-sky-200 rounded-xl font-bold text-xs flex items-center justify-center gap-1 cursor-pointer tabular-nums whitespace-nowrap"
               >
-                <LayoutGrid className="w-4 h-4 text-[#0878C9] shrink-0" />
+                <LayoutGrid className="w-3.5 h-3.5 text-[#0878C9] shrink-0" />
                 <span>
-                  Câu {displayedQuestions.length > 0 ? Math.min(currentQuestionIndex + 1, displayedQuestions.length) : 0}/{displayedQuestions.length}
+                  {displayedQuestions.length > 0 ? Math.min(currentQuestionIndex + 1, displayedQuestions.length) : 0}/{displayedQuestions.length}
                 </span>
-                <span className="text-[11px] opacity-75">({answeredCount} làm)</span>
+                <span className="text-[11px] opacity-75">({answeredCount})</span>
               </button>
 
-              {displayedQuestions.length > 0 && currentQuestionIndex < displayedQuestions.length - 1 ? (
+              {displayedQuestions.length > 0 && currentQuestionIndex < displayedQuestions.length - 1 && (
                 <button
                   type="button"
                   onClick={() =>
@@ -3469,27 +3490,30 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
                       Math.min(displayedQuestions.length - 1, prev + 1)
                     )
                   }
-                  className="min-h-[44px] px-4 bg-[#0878C9] hover:bg-[#073B66] text-white rounded-xl font-bold text-xs flex items-center gap-1 shadow-sm cursor-pointer shrink-0 whitespace-nowrap"
+                  aria-label="Câu tiếp theo"
+                  className="min-h-[44px] px-3 bg-[#0878C9] hover:bg-[#073B66] text-white rounded-xl font-bold text-xs flex items-center gap-0.5 shadow-sm cursor-pointer shrink-0 whitespace-nowrap"
                 >
-                  <span>Tiếp</span>
-                  <ChevronRight className="w-4 h-4" />
+                  <span className="hidden min-[390px]:inline">Tiếp</span>
+                  <ChevronRight className="w-4 h-4 shrink-0" />
                 </button>
-              ) : isStudentTakingExam ? (
+              )}
+
+              {isStudentTakingExam ? (
                 <button
                   type="button"
                   onClick={() => setIsConfirmSubmitOpen(true)}
-                  className="min-h-[44px] px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-sm cursor-pointer shrink-0 whitespace-nowrap"
+                  className="min-h-[44px] px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-extrabold text-xs flex items-center gap-1.5 shadow-sm cursor-pointer shrink-0 whitespace-nowrap"
                 >
-                  <Send className="w-4 h-4" />
+                  <Send className="w-3.5 h-3.5 shrink-0" />
                   <span>Nộp bài</span>
                 </button>
               ) : (
                 <button
                   type="button"
                   onClick={handleSyncAllToBank}
-                  className="min-h-[44px] px-3.5 bg-[#073B66] hover:bg-[#0878C9] text-white rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-sm cursor-pointer shrink-0 whitespace-nowrap"
+                  className="min-h-[44px] px-3 bg-[#073B66] hover:bg-[#0878C9] text-white rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-sm cursor-pointer shrink-0 whitespace-nowrap"
                 >
-                  <Save className="w-4 h-4 text-amber-300" />
+                  <Save className="w-4 h-4 text-amber-300 shrink-0" />
                   <span>Lưu đề</span>
                 </button>
               )}
@@ -3658,7 +3682,7 @@ export const StudentExamRoomModal: React.FC<StudentExamRoomModalProps> = ({
             <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-white/80 dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700 font-sans">
               <div className="flex items-center gap-2">
                 <button
-                  onClick={handleSaveScoreToGradebook}
+                  onClick={() => handleSaveScoreToGradebook(false)}
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-sm cursor-pointer transition-all"
                 >
                   <Save className="w-4 h-4" />
